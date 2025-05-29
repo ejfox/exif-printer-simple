@@ -40,6 +40,24 @@ npm run electron:dev
 # Build for production
 npm run build
 npm run build:electron
+
+# Distribution build (creates DMG)
+npm run dist
+```
+
+## Release Management
+
+```bash
+# Version bumping
+npm run version:patch  # 1.0.0 → 1.0.1
+npm run version:minor  # 1.0.0 → 1.1.0
+npm run version:major  # 1.0.0 → 2.0.0
+
+# Build and release to GitHub
+npm run release        # Release current version
+npm run release:patch  # Bump patch version and release
+npm run release:minor  # Bump minor version and release
+npm run release:major  # Bump major version and release
 ```
 
 ## macOS Permissions

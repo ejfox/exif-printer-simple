@@ -19,7 +19,14 @@
     "electron": "electron .",
     "electron:dev": "NODE_ENV=development electron .",
     "build:electron": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --publish=never"
+    "dist": "npm run build && electron-builder --publish=never",
+    "version:patch": "npm version patch",
+    "version:minor": "npm version minor", 
+    "version:major": "npm version major",
+    "release": "npm run dist && gh release create v$(node -p \"require('./package.json').version\") dist-electron/*.dmg --title \"EXIF Photo Printer v$(node -p \"require('./package.json').version\")\" --notes \"Release v$(node -p \"require('./package.json').version\")\"",
+    "release:patch": "npm run version:patch && npm run release",
+    "release:minor": "npm run version:minor && npm run release",
+    "release:major": "npm run version:major && npm run release"
   },
   "dependencies": {
     "exifr": "^7.1.3",
