@@ -24,8 +24,15 @@
           </div>
           
           <button 
-            @click="importFolder" 
+            @click="importFiles" 
             class="w-full mt-2 p-2 border text-xs"
+          >
+            Import Files
+          </button>
+          
+          <button 
+            @click="importFolder" 
+            class="w-full mt-1 p-2 border text-xs"
           >
             Import Folder
           </button>
@@ -160,7 +167,8 @@
 </template>
 
 <script>
-import exifr from 'exifr'
+import { usePhotoProcessing } from './composables/usePhotoProcessing'
+import { usePrintSizes } from './composables/usePrintSizes'
 
 export default {
   name: 'App',
@@ -178,7 +186,8 @@ export default {
         isDownloading: false,
         lastDownloadPath: null,
         downloadCount: 0
-      }
+      },
+      tauriUnlisteners: [] // Store cleanup functions
     }
   },
   
@@ -195,18 +204,67 @@ export default {
     }
   },
 
+  mounted() {
+    if (window.__TAURI__) {
+      this.setupTauriDropEvents()
+    }
+  },
+
+  beforeUnmount() {
+    // Clean up all Tauri event listeners
+    this.tauriUnlisteners.forEach(unlisten => {
+      if (typeof unlisten === 'function') {
+        unlisten()
+      }
+    })
+    this.tauriUnlisteners = []
+  },
+
+  setup() {
+    const { createPhotoFromExif, processPhoto, processPhotoFromPath, isImageFile } = usePhotoProcessing()
+    const { getSizeConfig } = usePrintSizes()
+    
+    return {
+      createPhotoFromExif,
+      processPhoto,
+      processPhotoFromPath,
+      isImageFile,
+      getSizeConfig
+    }
+  },
 
   methods: {
-    getSizeConfig(printSize) {
-      const sizes = {
-        '4x6': { width: 1800, height: 1200 },
-        '5x7': { width: 2100, height: 1500 },
-        '8x10': { width: 3000, height: 2400 },
-        '8x12': { width: 3600, height: 2400 },
-        '11x14': { width: 4200, height: 3300 },
-        'square': { width: 1500, height: 1500 }
+    async setupTauriDropEvents() {
+      try {
+        const { listen } = window.__TAURI__.event
+        
+        // Listen for file drop events
+        const dropUnlisten = await listen('tauri://drag-drop', async (event) => {
+          try {
+            const files = event.payload.paths || []
+            for (const filePath of files) {
+              if (this.isImageFile(filePath)) {
+                const photo = await this.processPhotoFromPath(filePath)
+                if (photo) this.photos.push(photo)
+              }
+            }
+            this.isDragOver = false
+          } catch (error) {
+            console.error('Error processing dropped files:', error)
+            this.isDragOver = false
+          }
+        })
+        
+        // Listen for drag over events to update UI
+        const dragOverUnlisten = await listen('tauri://drag-over', (event) => {
+          this.isDragOver = true
+        })
+        
+        // Store cleanup functions
+        this.tauriUnlisteners.push(dropUnlisten, dragOverUnlisten)
+      } catch (error) {
+        console.error('Error setting up Tauri drop events:', error)
       }
-      return sizes[printSize] || sizes['4x6']
     },
 
     dragLeave() {
@@ -217,44 +275,19 @@ export default {
       event.preventDefault()
       this.isDragOver = false
 
+      if (window.__TAURI__) {
+        // File drops are handled by Tauri events in setupTauriDropEvents()
+        return
+      }
+
+      // Fallback for web browsers
       const files = Array.from(event.dataTransfer.files).filter(file => 
         file.type.startsWith('image/')
       )
 
       for (const file of files) {
-        await this.processPhoto(file)
-      }
-    },
-
-    async processPhoto(file) {
-      try {
-        const exif = await exifr.parse(file) || {}
-        
-        const photo = {
-          id: Date.now() + Math.random(),
-          name: file.name,
-          file: file,
-          imageUrl: URL.createObjectURL(file),
-          exif: {
-            Make: exif.Make || 'Unknown',
-            Model: exif.Model || 'Camera',
-            FocalLength: exif.FocalLength || '50',
-            FNumber: exif.FNumber || '5.6',
-            ExposureTime: exif.ExposureTime || '1/60',
-            ISO: exif.ISO || exif.ISOSpeedRatings || '400',
-            DateTimeOriginal: exif.DateTimeOriginal || new Date().toISOString().split('T')[0],
-            LensModel: exif.LensModel || exif.LensMake,
-            WhiteBalance: exif.WhiteBalance,
-            ExposureMode: exif.ExposureMode,
-            ExposureProgram: exif.ExposureProgram,
-            MeteringMode: exif.MeteringMode,
-            Flash: exif.Flash
-          }
-        }
-
+        const photo = await this.processPhoto(file)
         this.photos.push(photo)
-      } catch (error) {
-        console.error('Error processing photo:', error)
       }
     },
 
@@ -405,12 +438,13 @@ export default {
     },
 
     async downloadAll() {
-      if (window.electronAPI) {
+      if (window.__TAURI__) {
         this.downloadStatus.isDownloading = true
         
         try {
           // Select directory with proper error handling
-          const selectedDir = await window.electronAPI.selectDirectory()
+          const { invoke } = window.__TAURI__.tauri
+          const selectedDir = await invoke('select_directory')
           if (!selectedDir) {
             this.downloadStatus.isDownloading = false
             return // User cancelled
@@ -429,7 +463,7 @@ export default {
           }
           
           // Download all files in one batch - no dialogs!
-          const result = await window.electronAPI.downloadFiles(files)
+          const result = await invoke('download_files', { files, directory: selectedDir })
           this.downloadStatus.isDownloading = false
           
           if (result.success) {
@@ -454,8 +488,9 @@ export default {
     },
 
     async openInFinder() {
-      if (window.electronAPI && this.downloadStatus.lastDownloadPath) {
-        await window.electronAPI.openInFinder(this.downloadStatus.lastDownloadPath)
+      if (window.__TAURI__ && this.downloadStatus.lastDownloadPath) {
+        const { invoke } = window.__TAURI__.tauri
+        await invoke('open_in_finder', { folderPath: this.downloadStatus.lastDownloadPath })
       }
     },
 
@@ -467,24 +502,77 @@ export default {
       })
     },
 
-    async importFolder() {
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.webkitdirectory = true
-      input.multiple = true
-      input.accept = 'image/*'
-      
-      input.onchange = async (event) => {
-        const files = Array.from(event.target.files).filter(file => 
-          file.type.startsWith('image/')
-        )
-        
-        for (const file of files) {
-          await this.processPhoto(file)
+    async importFiles() {
+      if (window.__TAURI__) {
+        try {
+          const { invoke } = window.__TAURI__.tauri
+          const filePaths = await invoke('import_files')
+          
+          for (const filePath of filePaths) {
+            const photo = await this.processPhotoFromPath(filePath)
+            if (photo) this.photos.push(photo)
+          }
+        } catch (error) {
+          console.error('Error importing files:', error)
+          alert(`Error importing files: ${error}`)
         }
+      } else {
+        // Fallback for web browsers
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.multiple = true
+        input.accept = 'image/*'
+        
+        input.onchange = async (event) => {
+          const files = Array.from(event.target.files).filter(file => 
+            file.type.startsWith('image/')
+          )
+          
+          for (const file of files) {
+            const photo = await this.processPhoto(file)
+            this.photos.push(photo)
+          }
+        }
+        
+        input.click()
       }
-      
-      input.click()
+    },
+
+    async importFolder() {
+      if (window.__TAURI__) {
+        try {
+          const { invoke } = window.__TAURI__.tauri
+          const filePaths = await invoke('import_folder')
+          
+          for (const filePath of filePaths) {
+            const photo = await this.processPhotoFromPath(filePath)
+            if (photo) this.photos.push(photo)
+          }
+        } catch (error) {
+          console.error('Error importing folder:', error)
+          alert(`Error importing folder: ${error}`)
+        }
+      } else {
+        // Fallback for web browsers
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.webkitdirectory = true
+        input.multiple = true
+        input.accept = 'image/*'
+        
+        input.onchange = async (event) => {
+          const files = Array.from(event.target.files).filter(file => 
+            file.type.startsWith('image/')
+          )
+          
+          for (const file of files) {
+            const photo = await this.processPhoto(file)
+            this.photos.push(photo)
+          }
+        }
+        
+        input.click()
+      }
     }
   }
 }
