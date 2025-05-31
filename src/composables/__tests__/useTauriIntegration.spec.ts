@@ -13,6 +13,8 @@ Object.defineProperty(window, '__TAURI__', {
   writable: true
 })
 
+// Type assertion for tests - we know it's defined in our mocks
+
 describe('Tauri Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -23,7 +25,7 @@ describe('Tauri Integration', () => {
       const mockFilePaths = ['/path/to/photo1.jpg', '/path/to/photo2.png']
       mockInvoke.mockResolvedValue(mockFilePaths)
 
-      const result = await window.__TAURI__.tauri.invoke('import_files')
+      const result = await window.__TAURI__!.tauri.invoke('import_files')
       
       expect(mockInvoke).toHaveBeenCalledWith('import_files')
       expect(result).toEqual(mockFilePaths)
@@ -33,7 +35,7 @@ describe('Tauri Integration', () => {
       const mockFilePaths = ['/folder/image1.jpg', '/folder/image2.jpg']
       mockInvoke.mockResolvedValue(mockFilePaths)
 
-      const result = await window.__TAURI__.tauri.invoke('import_folder')
+      const result = await window.__TAURI__!.tauri.invoke('import_folder')
       
       expect(mockInvoke).toHaveBeenCalledWith('import_folder')
       expect(result).toEqual(mockFilePaths)
@@ -43,7 +45,7 @@ describe('Tauri Integration', () => {
       const mockBytes = new Uint8Array([255, 216, 255, 224]) // JPEG header
       mockInvoke.mockResolvedValue(Array.from(mockBytes))
 
-      const result = await window.__TAURI__.tauri.invoke('read_file_as_bytes', { 
+      const result = await window.__TAURI__!.tauri.invoke('read_file_as_bytes', { 
         filePath: '/path/to/photo.jpg' 
       })
       
@@ -59,7 +61,7 @@ describe('Tauri Integration', () => {
       const mockDirectory = '/Users/test/Downloads'
       mockInvoke.mockResolvedValue(mockDirectory)
 
-      const result = await window.__TAURI__.tauri.invoke('select_directory')
+      const result = await window.__TAURI__!.tauri.invoke('select_directory')
       
       expect(mockInvoke).toHaveBeenCalledWith('select_directory')
       expect(result).toBe(mockDirectory)
@@ -68,7 +70,7 @@ describe('Tauri Integration', () => {
     it('should handle cancelled directory selection', async () => {
       mockInvoke.mockResolvedValue(null)
 
-      const result = await window.__TAURI__.tauri.invoke('select_directory')
+      const result = await window.__TAURI__!.tauri.invoke('select_directory')
       
       expect(result).toBeNull()
     })
@@ -85,7 +87,7 @@ describe('Tauri Integration', () => {
       
       mockInvoke.mockResolvedValue(mockResult)
 
-      const result = await window.__TAURI__.tauri.invoke('download_files', {
+      const result = await window.__TAURI__!.tauri.invoke('download_files', {
         files: mockFiles,
         directory: mockDirectory
       })
@@ -101,7 +103,7 @@ describe('Tauri Integration', () => {
       const mockError = { success: false, error: 'Permission denied' }
       mockInvoke.mockResolvedValue(mockError)
 
-      const result = await window.__TAURI__.tauri.invoke('download_files', {
+      const result = await window.__TAURI__!.tauri.invoke('download_files', {
         files: [],
         directory: '/invalid/path'
       })
@@ -117,7 +119,7 @@ describe('Tauri Integration', () => {
       mockListen.mockResolvedValue(mockUnlisten)
 
       const handler = vi.fn()
-      const unlisten = await window.__TAURI__.event.listen('tauri://drag-drop', handler)
+      const unlisten = await window.__TAURI__!.event.listen('tauri://drag-drop', handler)
       
       expect(mockListen).toHaveBeenCalledWith('tauri://drag-drop', handler)
       expect(unlisten).toBe(mockUnlisten)
@@ -128,7 +130,7 @@ describe('Tauri Integration', () => {
       mockListen.mockResolvedValue(mockUnlisten)
 
       const handler = vi.fn()
-      const unlisten = await window.__TAURI__.event.listen('tauri://drag-over', handler)
+      const unlisten = await window.__TAURI__!.event.listen('tauri://drag-over', handler)
       
       expect(mockListen).toHaveBeenCalledWith('tauri://drag-over', handler)
       expect(unlisten).toBe(mockUnlisten)
@@ -140,7 +142,7 @@ describe('Tauri Integration', () => {
       const mockResult = { success: true }
       mockInvoke.mockResolvedValue(mockResult)
 
-      const result = await window.__TAURI__.tauri.invoke('open_in_finder', {
+      const result = await window.__TAURI__!.tauri.invoke('open_in_finder', {
         folderPath: '/Users/test/Downloads'
       })
       
@@ -157,7 +159,7 @@ describe('Tauri Integration', () => {
       mockInvoke.mockRejectedValue(mockError)
 
       await expect(
-        window.__TAURI__.tauri.invoke('invalid_command')
+        window.__TAURI__!.tauri.invoke('invalid_command')
       ).rejects.toThrow('Command failed')
     })
 
@@ -166,7 +168,7 @@ describe('Tauri Integration', () => {
       mockListen.mockRejectedValue(mockError)
 
       await expect(
-        window.__TAURI__.event.listen('invalid://event', vi.fn())
+        window.__TAURI__!.event.listen('invalid://event', vi.fn())
       ).rejects.toThrow('Event setup failed')
     })
   })

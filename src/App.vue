@@ -11,16 +11,15 @@
         <!-- Drop Zone -->
         <div class="p-4 border-b">
           <div 
-            @drop="handleDrop" 
-            @dragover.prevent 
-            @dragenter.prevent
-            @dragleave="dragLeave"
             :class="[
-              'border-2 border-dashed p-6 text-center text-xs',
-              isDragOver ? 'border-blue-500' : 'border'
+              'border-2 border-dashed p-6 text-center text-xs transition-all duration-300 ease-in-out',
+              isDragOver ? 'border-blue-500 bg-blue-50 scale-105 shadow-lg' : 'border-gray-300 hover:border-gray-400'
             ]"
           >
-            Drop photos
+            <div :class="['transition-all duration-300', isDragOver ? 'text-blue-600 font-medium' : 'text-gray-600']">
+              <span v-if="isProcessingFiles" class="inline-block animate-spin">⚙️</span>
+              {{ isProcessingFiles ? ' Processing...' : isDragOver ? '📁 Drop photos here' : '📷 Drop photos' }}
+            </div>
           </div>
           
           <button 
@@ -91,13 +90,13 @@
           </label>
 
           <button 
-            @click="downloadAll" 
+            @click="exportAll" 
             :disabled="downloadStatus.isDownloading || photos.length === 0"
             class="w-full p-2 bg-black text-white text-xs disabled:opacity-50"
             style="cursor: pointer;"
           >
-            <span v-if="downloadStatus.isDownloading">Saving...</span>
-            <span v-else>Download All ({{ photos.length }})</span>
+            <span v-if="downloadStatus.isDownloading">💾 Exporting...</span>
+            <span v-else>📤 Export All ({{ photos.length }})</span>
           </button>
           
           
@@ -105,13 +104,13 @@
           <div v-if="downloadStatus.lastDownloadPath && !downloadStatus.isDownloading" 
                class="mt-2 p-2 bg-green-50 border border-green-200 text-xs">
             <div class="text-green-700 mb-1">
-              ✓ {{ downloadStatus.downloadCount }} files saved
+              ✅ {{ downloadStatus.downloadCount }} prints exported
             </div>
             <button 
               @click="openInFinder"
               class="w-full p-1 bg-green-600 text-white text-xs hover:bg-green-700"
             >
-              Open in Finder
+              📂 Show in Finder
             </button>
           </div>
         </div>
@@ -149,13 +148,13 @@
                   @click="generatePrint(index)" 
                   class="flex-1 p-1 border"
                 >
-                  Regen
+                  🔄 Regen
                 </button>
                 <button 
-                  @click="downloadPrint(index)" 
+                  @click="savePrint(index)" 
                   class="flex-1 p-1 border-l-0 border bg-black text-white"
                 >
-                  Download
+                  💾 Save
                 </button>
               </div>
             </div>
@@ -169,6 +168,8 @@
 <script>
 import { usePhotoProcessing } from './composables/usePhotoProcessing'
 import { usePrintSizes } from './composables/usePrintSizes'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 export default {
   name: 'App',
@@ -187,6 +188,7 @@ export default {
         lastDownloadPath: null,
         downloadCount: 0
       },
+      isProcessingFiles: false,
       tauriUnlisteners: [] // Store cleanup functions
     }
   },
@@ -205,9 +207,7 @@ export default {
   },
 
   mounted() {
-    if (window.__TAURI__) {
-      this.setupTauriDropEvents()
-    }
+    this.setupTauriDropEvents()
   },
 
   beforeUnmount() {
@@ -236,60 +236,49 @@ export default {
   methods: {
     async setupTauriDropEvents() {
       try {
-        const { listen } = window.__TAURI__.event
         
         // Listen for file drop events
         const dropUnlisten = await listen('tauri://drag-drop', async (event) => {
           try {
-            const files = event.payload.paths || []
-            for (const filePath of files) {
-              if (this.isImageFile(filePath)) {
-                const photo = await this.processPhotoFromPath(filePath)
-                if (photo) this.photos.push(photo)
-              }
-            }
             this.isDragOver = false
+            const files = event.payload.paths || []
+            
+            if (files.length > 0) {
+              this.isProcessingFiles = true
+              
+              for (const filePath of files) {
+                if (this.isImageFile(filePath)) {
+                  const photo = await this.processPhotoFromPath(filePath)
+                  if (photo) this.photos.push(photo)
+                }
+              }
+              
+              this.isProcessingFiles = false
+            }
           } catch (error) {
             console.error('Error processing dropped files:', error)
             this.isDragOver = false
+            this.isProcessingFiles = false
           }
         })
         
-        // Listen for drag over events to update UI
+        // Listen for drag over events to update UI  
         const dragOverUnlisten = await listen('tauri://drag-over', (event) => {
           this.isDragOver = true
         })
         
+        // Listen for drag leave events
+        const dragLeaveUnlisten = await listen('tauri://drag-leave', (event) => {
+          this.isDragOver = false
+        })
+        
         // Store cleanup functions
-        this.tauriUnlisteners.push(dropUnlisten, dragOverUnlisten)
+        this.tauriUnlisteners.push(dropUnlisten, dragOverUnlisten, dragLeaveUnlisten)
       } catch (error) {
         console.error('Error setting up Tauri drop events:', error)
       }
     },
 
-    dragLeave() {
-      this.isDragOver = false
-    },
-
-    async handleDrop(event) {
-      event.preventDefault()
-      this.isDragOver = false
-
-      if (window.__TAURI__) {
-        // File drops are handled by Tauri events in setupTauriDropEvents()
-        return
-      }
-
-      // Fallback for web browsers
-      const files = Array.from(event.dataTransfer.files).filter(file => 
-        file.type.startsWith('image/')
-      )
-
-      for (const file of files) {
-        const photo = await this.processPhoto(file)
-        this.photos.push(photo)
-      }
-    },
 
     async generatePrint(index) {
       const photo = this.photos[index]
@@ -425,7 +414,7 @@ export default {
       img.src = photo.imageUrl
     },
 
-    downloadPrint(index) {
+    savePrint(index) {
       const canvas = this.canvasRefs[index]
       const photo = this.photos[index]
       
@@ -437,14 +426,12 @@ export default {
       link.click()
     },
 
-    async downloadAll() {
-      if (window.__TAURI__) {
+    async exportAll() {
+      try {
         this.downloadStatus.isDownloading = true
         
-        try {
-          // Select directory with proper error handling
-          const { invoke } = window.__TAURI__.tauri
-          const selectedDir = await invoke('select_directory')
+        // Select directory with proper error handling
+        const selectedDir = await invoke('select_directory')
           if (!selectedDir) {
             this.downloadStatus.isDownloading = false
             return // User cancelled
@@ -462,35 +449,37 @@ export default {
             }
           }
           
-          // Download all files in one batch - no dialogs!
-          const result = await invoke('download_files', { files, directory: selectedDir })
-          this.downloadStatus.isDownloading = false
-          
-          if (result.success) {
-            this.downloadStatus.lastDownloadPath = result.directory
-            this.downloadStatus.downloadCount = result.count
-            // Success animation/feedback handled by UI
-          } else {
-            alert(`Error saving files: ${result.error}`)
-          }
-        } catch (error) {
-          this.downloadStatus.isDownloading = false
-          alert(`Error during download: ${error.message}`)
+        // Download all files in one batch - no dialogs!
+        const result = await invoke('download_files', { files, directory: selectedDir })
+        this.downloadStatus.isDownloading = false
+        
+        if (result.success) {
+          this.downloadStatus.lastDownloadPath = result.directory
+          this.downloadStatus.downloadCount = result.count
+          // Success animation/feedback handled by UI
+        } else {
+          alert(`Error saving files: ${result.error}`)
         }
-      } else {
-        // Fallback for web browsers - download to default download folder
+      } catch (error) {
+        this.downloadStatus.isDownloading = false
+        console.error('Error during export:', error)
+        alert(`Error during export: ${error.message || error}`)
+        
         this.photos.forEach((photo, index) => {
           setTimeout(() => {
-            this.downloadPrint(index)
+            this.savePrint(index)
           }, index * 100)
         })
       }
     },
 
     async openInFinder() {
-      if (window.__TAURI__ && this.downloadStatus.lastDownloadPath) {
-        const { invoke } = window.__TAURI__.tauri
-        await invoke('open_in_finder', { folderPath: this.downloadStatus.lastDownloadPath })
+      try {
+        if (this.downloadStatus.lastDownloadPath) {
+          await invoke('open_in_finder', { folderPath: this.downloadStatus.lastDownloadPath })
+        }
+      } catch (error) {
+        console.error('Error opening in finder:', error)
       }
     },
 
@@ -503,20 +492,20 @@ export default {
     },
 
     async importFiles() {
-      if (window.__TAURI__) {
-        try {
-          const { invoke } = window.__TAURI__.tauri
-          const filePaths = await invoke('import_files')
+      try {
+        this.isProcessingFiles = true
+        const filePaths = await invoke('import_files')
           
-          for (const filePath of filePaths) {
-            const photo = await this.processPhotoFromPath(filePath)
-            if (photo) this.photos.push(photo)
-          }
-        } catch (error) {
-          console.error('Error importing files:', error)
-          alert(`Error importing files: ${error}`)
+        for (const filePath of filePaths) {
+          const photo = await this.processPhotoFromPath(filePath)
+          if (photo) this.photos.push(photo)
         }
-      } else {
+        this.isProcessingFiles = false
+      } catch (error) {
+        this.isProcessingFiles = false
+        console.error('Error importing files:', error)
+        alert(`Error importing files: ${error}`)
+        
         // Fallback for web browsers
         const input = document.createElement('input')
         input.type = 'file'
@@ -539,21 +528,20 @@ export default {
     },
 
     async importFolder() {
-      if (window.__TAURI__) {
-        try {
-          const { invoke } = window.__TAURI__.tauri
-          const filePaths = await invoke('import_folder')
+      try {
+        this.isProcessingFiles = true
+        const filePaths = await invoke('import_folder')
           
-          for (const filePath of filePaths) {
-            const photo = await this.processPhotoFromPath(filePath)
-            if (photo) this.photos.push(photo)
-          }
-        } catch (error) {
-          console.error('Error importing folder:', error)
-          alert(`Error importing folder: ${error}`)
+        for (const filePath of filePaths) {
+          const photo = await this.processPhotoFromPath(filePath)
+          if (photo) this.photos.push(photo)
         }
-      } else {
-        // Fallback for web browsers
+        this.isProcessingFiles = false
+      } catch (error) {
+        this.isProcessingFiles = false
+        console.error('Error importing folder:', error)
+        alert(`Error importing folder: ${error}`)
+        
         const input = document.createElement('input')
         input.type = 'file'
         input.webkitdirectory = true

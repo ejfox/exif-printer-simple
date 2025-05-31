@@ -29,7 +29,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools()
   } else {
     // In production, files are in the app bundle
-    const indexPath = path.join(__dirname, 'dist', 'index.html')
+    const indexPath = path.join(__dirname, '..', 'dist', 'index.html')
     console.log('Loading file from:', indexPath)
     console.log('__dirname is:', __dirname)
     mainWindow.loadFile(indexPath)

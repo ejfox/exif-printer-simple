@@ -1,4 +1,5 @@
 import exifr from 'exifr'
+import { invoke } from '@tauri-apps/api/core'
 
 export interface PhotoExif {
   Make: string
@@ -64,18 +65,18 @@ export function usePhotoProcessing() {
   }
 
   const processPhotoFromPath = async (filePath: string): Promise<Photo | null> => {
-    if (!window.__TAURI__) {
-      throw new Error('Tauri is not available')
+    try {
+      const fileBytes = await invoke('read_file_as_bytes', { filePath })
+      const blob = new Blob([new Uint8Array(fileBytes as number[])])
+      const imageUrl = URL.createObjectURL(blob)
+      const exif = await exifr.parse(blob) || {}
+      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || ''
+      
+      return createPhotoFromExif(exif, fileName, imageUrl, filePath)
+    } catch (error) {
+      console.error('Error processing photo from path:', error)
+      return null
     }
-
-    const { invoke } = window.__TAURI__.tauri
-    const fileBytes = await invoke('read_file_as_bytes', { filePath })
-    const blob = new Blob([new Uint8Array(fileBytes as number[])])
-    const imageUrl = URL.createObjectURL(blob)
-    const exif = await exifr.parse(blob) || {}
-    const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || ''
-    
-    return createPhotoFromExif(exif, fileName, imageUrl, filePath)
   }
 
   const isImageFile = (filePath: string): boolean => {
