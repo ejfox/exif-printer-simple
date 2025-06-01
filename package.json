@@ -1,6 +1,6 @@
 {
   "name": "exif-photo-printer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Create printable photos with EXIF data borders",
   "author": "EJ Fox",
   "private": true,
