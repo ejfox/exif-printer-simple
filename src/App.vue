@@ -2,36 +2,41 @@
   <div class="min-h-screen bg-white text-black">
     <!-- Header -->
     <div class="border-b p-4">
-      <h1 class="text-sm">EXIF Photo Printer</h1>
+      <h1 class="text-sm text-luxury">EXIF Photo Printer</h1>
+      <div class="divider mt-2"></div>
     </div>
 
     <div class="flex">
       <!-- Sidebar -->
-      <div class="w-64 border-r min-h-screen">
+      <div class="w-64 border-r min-h-screen card-subtle">
         <!-- Drop Zone -->
         <div class="p-4 border-b">
           <div 
             :class="[
               'border-2 border-dashed p-6 text-center text-xs transition-all duration-300 ease-in-out',
-              isDragOver ? 'border-blue-500 bg-blue-50 scale-105 shadow-lg' : 'border-gray-300 hover:border-gray-400'
+              isDragOver ? 'border-blue-500 bg-blue-50 scale-105 shadow-lg' : 'border-gray-300 hover:border-gray-400',
+              isProcessingFiles ? 'processing-indicator' : ''
             ]"
           >
             <div :class="['transition-all duration-300', isDragOver ? 'text-blue-600 font-medium' : 'text-gray-600']">
               <span v-if="isProcessingFiles" class="inline-block animate-spin">⚙️</span>
-              {{ isProcessingFiles ? ' Processing...' : isDragOver ? '📁 Drop photos here' : '📷 Drop photos' }}
+              {{ getDropZoneText() }}
+            </div>
+            <div v-if="processingCount > 0" class="mt-2 text-micro text-gray-500">
+              Processing {{ processingCount }} photos...
             </div>
           </div>
           
           <button 
             @click="importFiles" 
-            class="w-full mt-2 p-2 border text-xs"
+            class="w-full mt-2 p-2 border text-xs bg-white text-black"
           >
             Import Files
           </button>
           
           <button 
             @click="importFolder" 
-            class="w-full mt-1 p-2 border text-xs"
+            class="w-full mt-1 p-2 border text-xs bg-white text-black"
           >
             Import Folder
           </button>
@@ -40,8 +45,30 @@
         <!-- Settings -->
         <div v-if="photos.length > 0" class="p-4 space-y-3">
           <div>
-            <label class="block text-xs mb-1">Size</label>
+            <label class="block text-xs mb-1">Format</label>
+            <div class="grid grid-cols-2 gap-1 mb-2">
+              <button 
+                @click="globalSettings.printSize = 'contact'; applyGlobalSettings()" 
+                :class="[
+                  'p-2 text-xs border',
+                  globalSettings.printSize === 'contact' ? 'bg-black text-white' : 'bg-white text-black'
+                ]"
+              >
+                📄 Contact Sheet
+              </button>
+              <button 
+                @click="globalSettings.printSize = '4x6'; applyGlobalSettings()" 
+                :class="[
+                  'p-2 text-xs border',
+                  globalSettings.printSize !== 'contact' ? 'bg-black text-white' : 'bg-white text-black'
+                ]"
+              >
+                🖼️ Individual Prints
+              </button>
+            </div>
+            
             <select 
+              v-if="globalSettings.printSize !== 'contact'"
               v-model="globalSettings.printSize" 
               @change="applyGlobalSettings"
               class="w-full p-1 border bg-white text-xs"
@@ -55,14 +82,14 @@
             </select>
           </div>
 
-          <div>
+          <div v-if="globalSettings.printSize !== 'contact'">
             <label class="block text-xs mb-1">Fit</label>
             <div class="flex">
               <button 
                 @click="globalSettings.fitMode = 'fit'; applyGlobalSettings()" 
                 :class="[
                   'flex-1 p-1 text-xs border',
-                  globalSettings.fitMode === 'fit' ? 'bg-black text-white' : 'bg-white'
+                  globalSettings.fitMode === 'fit' ? 'bg-black text-white' : 'bg-white text-black'
                 ]"
               >
                 Preserve
@@ -71,7 +98,7 @@
                 @click="globalSettings.fitMode = 'fill'; applyGlobalSettings()" 
                 :class="[
                   'flex-1 p-1 text-xs border-l-0 border',
-                  globalSettings.fitMode === 'fill' ? 'bg-black text-white' : 'bg-white'
+                  globalSettings.fitMode === 'fill' ? 'bg-black text-white' : 'bg-white text-black'
                 ]"
               >
                 Fill
@@ -79,7 +106,7 @@
             </div>
           </div>
 
-          <label class="flex text-xs">
+          <label v-if="globalSettings.printSize !== 'contact'" class="flex text-xs">
             <input 
               type="checkbox" 
               v-model="globalSettings.blackBorder" 
@@ -89,26 +116,55 @@
             Black border
           </label>
 
+          <div v-if="globalSettings.printSize === 'contact'" class="space-y-2">
+            <label class="flex text-xs">
+              <input 
+                type="checkbox" 
+                v-model="globalSettings.showFilenames" 
+                @change="applyGlobalSettings"
+                class="mr-2"
+              >
+              Show filenames
+            </label>
+            <label class="flex text-xs">
+              <input 
+                type="checkbox" 
+                v-model="globalSettings.showExif" 
+                @change="applyGlobalSettings"
+                class="mr-2"
+              >
+              Show EXIF data
+            </label>
+          </div>
+
           <button 
             @click="exportAll" 
             :disabled="downloadStatus.isDownloading || photos.length === 0"
-            class="w-full p-2 bg-black text-white text-xs disabled:opacity-50"
+            class="w-full p-2 btn-primary text-xs disabled:opacity-50"
             style="cursor: pointer;"
           >
             <span v-if="downloadStatus.isDownloading">💾 Exporting...</span>
             <span v-else>📤 Export All ({{ photos.length }})</span>
           </button>
           
+          <button 
+            @click="clearAllPhotos" 
+            :disabled="photos.length === 0"
+            class="w-full p-2 border bg-white text-black text-xs disabled:opacity-50 hover:bg-red-50"
+          >
+            🗑️ Clear All
+          </button>
+          
           
           <!-- Success message and Open in Finder -->
           <div v-if="downloadStatus.lastDownloadPath && !downloadStatus.isDownloading" 
-               class="mt-2 p-2 bg-green-50 border border-green-200 text-xs">
-            <div class="text-green-700 mb-1">
+               class="mt-2 p-2 card-subtle border text-xs">
+            <div class="text-micro mb-1">
               ✅ {{ downloadStatus.downloadCount }} prints exported
             </div>
             <button 
               @click="openInFinder"
-              class="w-full p-1 bg-green-600 text-white text-xs hover:bg-green-700"
+              class="w-full p-1 btn-primary text-xs"
             >
               📂 Show in Finder
             </button>
@@ -122,17 +178,95 @@
           <div class="text-xs">Drop photos to start</div>
         </div>
 
+        <div v-else-if="globalSettings.printSize === 'contact'" class="flex justify-center">
+          <div class="card-subtle max-w-4xl">
+            <div class="p-3 border-b flex justify-between items-start">
+              <div>
+                <div class="text-xs text-luxury">Contact Sheet</div>
+                <div class="text-micro text-gray-500 mt-1">
+                  {{ photos.length }} images • {{ calculateGrid(photos.length).cols }}×{{ calculateGrid(photos.length).rows }} grid
+                </div>
+              </div>
+              <button 
+                @click="clearAllPhotos"
+                class="p-1 text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                title="Clear all photos"
+              >
+                🗑️
+              </button>
+            </div>
+            <div class="p-3">
+              <canvas 
+                :ref="el => { if (el) canvasRefs[0] = el }"
+                :width="getSizeConfig('contact').width" 
+                :height="getSizeConfig('contact').height"
+                class="w-full border"
+              ></canvas>
+              
+              <div class="flex mt-2 text-xs">
+                <button 
+                  @click="regenerateContactSheet" 
+                  class="flex-1 p-1 border bg-white text-black"
+                >
+                  🔄 Regen
+                </button>
+                <button 
+                  @click="saveContactSheet" 
+                  class="flex-1 p-1 border-l-0 border bg-black text-white"
+                >
+                  💾 Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Skeleton placeholders for processing photos -->
+          <div 
+            v-for="(skeleton, index) in skeletonPhotos" 
+            :key="`skeleton-${skeleton.id}`"
+            :class="[
+              'card-subtle fade-in',
+              `stagger-${(index % 6) + 1}`
+            ]"
+          >
+            <div class="p-3 border-b">
+              <div class="skeleton h-4 w-3/4 mb-2 rounded"></div>
+              <div class="skeleton h-3 w-1/2 rounded"></div>
+            </div>
+            <div class="p-3">
+              <div class="skeleton w-full aspect-[4/3] rounded mb-2"></div>
+              <div class="flex gap-1">
+                <div class="skeleton flex-1 h-8 rounded"></div>
+                <div class="skeleton flex-1 h-8 rounded"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actual loaded photos -->
           <div 
             v-for="(photo, index) in photos" 
             :key="photo.id" 
-            class="border"
+            :class="[
+              'card-subtle bounce-in',
+              `stagger-${(index % 6) + 1}`
+            ]"
           >
-            <div class="p-3 border-b">
-              <div class="text-xs truncate">{{ photo.name }}</div>
-              <div class="text-xs text-gray-500 mt-1">
-                {{ photo.exif.Make }} {{ photo.exif.Model }}
+            <div class="p-3 border-b flex justify-between items-start">
+              <div class="flex-1 min-w-0">
+                <div class="text-xs truncate text-luxury">{{ photo.name }}</div>
+                <div class="text-micro text-gray-500 mt-1">
+                  {{ photo.exif.Make }} {{ photo.exif.Model }}
+                </div>
               </div>
+              <button 
+                @click="removePhoto(index)"
+                class="ml-2 p-1 text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                title="Remove photo"
+              >
+                ✕
+              </button>
             </div>
 
             <div class="p-3">
@@ -146,7 +280,7 @@
               <div class="flex mt-2 text-xs">
                 <button 
                   @click="generatePrint(index)" 
-                  class="flex-1 p-1 border"
+                  class="flex-1 p-1 border bg-white text-black"
                 >
                   🔄 Regen
                 </button>
@@ -168,6 +302,7 @@
 <script>
 import { usePhotoProcessing } from './composables/usePhotoProcessing'
 import { usePrintSizes } from './composables/usePrintSizes'
+import { useContactSheet } from './composables/useContactSheet'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
@@ -176,12 +311,15 @@ export default {
   data() {
     return {
       photos: [],
+      skeletonPhotos: [], // Placeholder photos while processing
       isDragOver: false,
       canvasRefs: [],
       globalSettings: {
         printSize: '4x6',
         fitMode: 'fit',
-        blackBorder: false
+        blackBorder: false,
+        showFilenames: true,
+        showExif: true
       },
       downloadStatus: {
         isDownloading: false,
@@ -189,6 +327,7 @@ export default {
         downloadCount: 0
       },
       isProcessingFiles: false,
+      processingCount: 0,
       tauriUnlisteners: [] // Store cleanup functions
     }
   },
@@ -223,13 +362,16 @@ export default {
   setup() {
     const { createPhotoFromExif, processPhoto, processPhotoFromPath, isImageFile } = usePhotoProcessing()
     const { getSizeConfig } = usePrintSizes()
+    const { generateContactSheet, calculateGrid } = useContactSheet()
     
     return {
       createPhotoFromExif,
       processPhoto,
       processPhotoFromPath,
       isImageFile,
-      getSizeConfig
+      getSizeConfig,
+      generateContactSheet,
+      calculateGrid
     }
   },
 
@@ -245,20 +387,47 @@ export default {
             
             if (files.length > 0) {
               this.isProcessingFiles = true
+              this.processingCount = files.filter(this.isImageFile).length
               
-              for (const filePath of files) {
-                if (this.isImageFile(filePath)) {
+              // Add skeleton placeholders for all images
+              const imageFiles = files.filter(this.isImageFile)
+              this.skeletonPhotos = imageFiles.map((filePath, index) => ({
+                id: `skeleton-${Date.now()}-${index}`,
+                name: filePath.split('/').pop() || 'Unknown',
+                processing: true
+              }))
+              
+              // Process photos one by one with staggered timing, starting from the first
+              for (let i = 0; i < imageFiles.length; i++) {
+                const filePath = imageFiles[i]
+                try {
                   const photo = await this.processPhotoFromPath(filePath)
-                  if (photo) this.photos.push(photo)
+                  if (photo) {
+                    // Remove the first remaining skeleton and add photo to end
+                    this.skeletonPhotos.shift()
+                    this.photos.push(photo)
+                    
+                    // Small delay for staggered effect
+                    if (i < imageFiles.length - 1) {
+                      await new Promise(resolve => setTimeout(resolve, 150))
+                    }
+                  }
+                } catch (error) {
+                  console.error(`Error processing ${filePath}:`, error)
+                  this.skeletonPhotos.shift() // Remove first skeleton on error
                 }
+                this.processingCount--
               }
               
               this.isProcessingFiles = false
+              this.skeletonPhotos = []
             }
           } catch (error) {
             console.error('Error processing dropped files:', error)
             this.isDragOver = false
             this.isProcessingFiles = false
+            this.skeletonPhotos = []
+            this.processingCount = 0
           }
         })
         
@@ -281,10 +450,24 @@ export default {
 
 
     async generatePrint(index) {
-      const photo = this.photos[index]
       const canvas = this.canvasRefs[index]
       
-      if (!canvas || !photo) return
+      if (!canvas) return
+      
+      // Handle contact sheet differently
+      if (this.globalSettings.printSize === 'contact') {
+        await this.generateContactSheet(canvas, this.photos, {
+          showFilenames: this.globalSettings.showFilenames,
+          showExif: this.globalSettings.showExif,
+          margin: 40,
+          spacing: 12,
+          fontSize: 10
+        })
+        return
+      }
+
+      const photo = this.photos[index]
+      if (!photo) return
 
       const ctx = canvas.getContext('2d')
       const img = new Image()
@@ -416,12 +599,19 @@ export default {
 
     savePrint(index) {
       const canvas = this.canvasRefs[index]
-      const photo = this.photos[index]
       
       if (!canvas) return
       
       const link = document.createElement('a')
-      link.download = `${photo.name.split('.')[0]}_print.png`
+      
+      if (this.globalSettings.printSize === 'contact') {
+        const date = new Date().toISOString().split('T')[0]
+        link.download = `contact_sheet_${date}.png`
+      } else {
+        const photo = this.photos[index]
+        link.download = `${photo.name.split('.')[0]}_print.png`
+      }
+      
       link.href = canvas.toDataURL('image/png')
       link.click()
     },
@@ -561,6 +751,57 @@ export default {
         
         input.click()
       }
+    },
+
+    removePhoto(index) {
+      this.photos.splice(index, 1)
+      // Clear the canvas ref for the removed photo
+      this.canvasRefs.splice(index, 1)
+    },
+
+    clearAllPhotos() {
+      if (confirm('Remove all photos?')) {
+        this.photos = []
+        this.skeletonPhotos = []
+        this.canvasRefs = []
+        this.downloadStatus.lastDownloadPath = null
+        this.downloadStatus.downloadCount = 0
+        this.processingCount = 0
+      }
+    },
+
+    getDropZoneText() {
+      if (this.isProcessingFiles) {
+        return ` Processing ${this.processingCount} photos...`
+      }
+      if (this.isDragOver) {
+        return '📁 Drop photos here'
+      }
+      return '📷 Drop photos'
+    },
+
+    async regenerateContactSheet() {
+      const canvas = this.canvasRefs[0]
+      if (!canvas || this.photos.length === 0) return
+
+      await this.generateContactSheet(canvas, this.photos, {
+        showFilenames: this.globalSettings.showFilenames,
+        showExif: this.globalSettings.showExif,
+        margin: 40,
+        spacing: 12,
+        fontSize: 10
+      })
+    },
+
+    saveContactSheet() {
+      const canvas = this.canvasRefs[0]
+      if (!canvas) return
+
+      const link = document.createElement('a')
+      const date = new Date().toISOString().split('T')[0]
+      link.download = `contact_sheet_${date}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
     }
   }
 }

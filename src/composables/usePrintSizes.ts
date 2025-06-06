@@ -3,7 +3,7 @@ export interface PrintSize {
   height: number
 }
 
-export type PrintSizeKey = '4x6' | '5x7' | '8x10' | '8x12' | '11x14' | 'square'
+export type PrintSizeKey = '4x6' | '5x7' | '8x10' | '8x12' | '11x14' | 'square' | 'contact'
 
 export function usePrintSizes() {
   const sizes: Record<PrintSizeKey, PrintSize> = {
@@ -12,7 +12,8 @@ export function usePrintSizes() {
     '8x10': { width: 3000, height: 2400 },
     '8x12': { width: 3600, height: 2400 },
     '11x14': { width: 4200, height: 3300 },
-    'square': { width: 1500, height: 1500 }
+    'square': { width: 1500, height: 1500 },
+    'contact': { width: 3000, height: 2400 } // 8x10 for contact sheets
   }
 
   const getSizeConfig = (printSize: PrintSizeKey): PrintSize => {

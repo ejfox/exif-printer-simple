@@ -1,4 +1,3 @@
-use tauri::Manager;
 use std::path::Path;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 

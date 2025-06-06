@@ -5,7 +5,10 @@
       "Bash(npm install:*)",
       "Bash(npm run tauri:build:*)",
       "Bash(npm run test:unit:*)",
-      "Bash(npm run tauri:dev:*)"
+      "Bash(npm run tauri:dev:*)",
+      "Bash(rustup target:*)",
+      "Bash(gh release create:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }
