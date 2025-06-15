@@ -116,6 +116,21 @@
             Black border
           </label>
 
+          <div>
+            <label class="flex text-xs">
+              <input 
+                type="checkbox" 
+                v-model="globalSettings.commercialPrintSafe" 
+                @change="applyGlobalSettings"
+                class="mr-2"
+              >
+              Commercial print safe
+            </label>
+            <div v-if="globalSettings.commercialPrintSafe" class="text-micro text-gray-500 ml-5 mt-1">
+              Adds wider margins for Walgreens, CVS, Walmart
+            </div>
+          </div>
+
           <div v-if="globalSettings.printSize === 'contact'" class="space-y-2">
             <label class="flex text-xs">
               <input 
@@ -319,7 +334,8 @@ export default {
         fitMode: 'fit',
         blackBorder: false,
         showFilenames: true,
-        showExif: true
+        showExif: true,
+        commercialPrintSafe: true  // Default to safe mode for commercial printing
       },
       downloadStatus: {
         isDownloading: false,
@@ -459,7 +475,7 @@ export default {
         await this.generateContactSheet(canvas, this.photos, {
           showFilenames: this.globalSettings.showFilenames,
           showExif: this.globalSettings.showExif,
-          margin: 40,
+          margin: this.globalSettings.commercialPrintSafe ? 180 : 40,
           spacing: 12,
           fontSize: 10
         })
@@ -543,7 +559,10 @@ export default {
         ctx.fillStyle = '#222'
         ctx.font = `${fontSize}px monospace`
         
-        const pad = borderSize * 0.2
+        // Commercial print safe margin (150px minimum, 180px for extra safety)
+        const SAFE_MARGIN = 150        // 0.5" at 300 DPI - minimum safe zone
+        const COMMERCIAL_MARGIN = 180   // 0.6" for extra safety with aggressive printers
+        const pad = this.globalSettings.commercialPrintSafe ? COMMERCIAL_MARGIN : 30
         
         // Camera
         ctx.textAlign = 'left'
@@ -787,7 +806,7 @@ export default {
       await this.generateContactSheet(canvas, this.photos, {
         showFilenames: this.globalSettings.showFilenames,
         showExif: this.globalSettings.showExif,
-        margin: 40,
+        margin: this.globalSettings.commercialPrintSafe ? 180 : 40,
         spacing: 12,
         fontSize: 10
       })
