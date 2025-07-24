@@ -1,14 +1,15 @@
 <template>
-  <div class="min-h-screen bg-white text-black">
+  <div class="h-screen bg-white text-black flex flex-col">
     <!-- Header -->
-    <div class="border-b p-4">
+    <div class="border-b p-4 flex-shrink-0">
       <h1 class="text-sm text-luxury">EXIF Photo Printer</h1>
       <div class="divider mt-2"></div>
     </div>
 
-    <div class="flex">
+    <!-- Top Half: Sidebar + Grid -->
+    <div class="flex flex-1" :class="{ 'h-1/2': previewPane.isVisible }">
       <!-- Sidebar -->
-      <div class="w-64 border-r min-h-screen card-subtle">
+      <div class="w-64 border-r card-subtle flex-shrink-0">
         <!-- Drop Zone -->
         <div class="p-4 border-b">
           <div 
@@ -79,6 +80,8 @@
               <option value="8x12">8x12"</option>
               <option value="11x14">11x14"</option>
               <option value="square">5x5"</option>
+              <option value="video-4k">📹 4K Video (3840x2160)</option>
+              <option value="video-1080p">📹 1080p Video (1920x1080)</option>
             </select>
           </div>
 
@@ -128,6 +131,42 @@
             </label>
             <div v-if="globalSettings.commercialPrintSafe" class="text-micro text-gray-500 ml-5 mt-1">
               Adds wider margins for Walgreens, CVS, Walmart
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs mb-1">EXIF Margin (px)</label>
+            <input 
+              type="range" 
+              v-model.number="globalSettings.marginSize" 
+              @input="applyGlobalSettings"
+              min="30" 
+              max="300" 
+              step="10"
+              class="w-full"
+            >
+            <div class="flex justify-between text-micro text-gray-500 mt-1">
+              <span>30px (Tight)</span>
+              <span>{{ globalSettings.marginSize }}px</span>
+              <span>300px (Wide)</span>
+            </div>
+            <div class="text-micro text-gray-400 mt-1">
+              Distance from edge to EXIF text ({{ Math.round(globalSettings.marginSize / 300 * 100) / 100 }}" at 300 DPI)
+            </div>
+          </div>
+
+          <div>
+            <label class="flex text-xs">
+              <input 
+                type="checkbox" 
+                v-model="previewPane.isVisible"
+                @change="togglePreviewPane"
+                class="mr-2"
+              >
+              Show preview pane ({{ previewPane.isVisible }})
+            </label>
+            <div class="text-micro text-gray-500 mt-1">
+              Large preview to read EXIF text clearly
             </div>
           </div>
 
@@ -188,12 +227,14 @@
       </div>
 
       <!-- Main Area -->
-      <div class="flex-1 p-4">
-        <div v-if="photos.length === 0" class="text-center text-gray-500 mt-20">
-          <div class="text-xs">Drop photos to start</div>
-        </div>
+      <div class="flex-1 overflow-auto">
+        <!-- Photo Gallery -->
+        <div class="p-4">
+          <div v-if="photos.length === 0" class="text-center text-gray-500 mt-20">
+            <div class="text-xs">Drop photos to start</div>
+          </div>
 
-        <div v-else-if="globalSettings.printSize === 'contact'" class="flex justify-center">
+          <div v-else-if="globalSettings.printSize === 'contact'" class="flex justify-center">
           <div class="card-subtle max-w-4xl">
             <div class="p-3 border-b flex justify-between items-start">
               <div>
@@ -218,16 +259,10 @@
                 class="w-full border"
               ></canvas>
               
-              <div class="flex mt-2 text-xs">
-                <button 
-                  @click="regenerateContactSheet" 
-                  class="flex-1 p-1 border bg-white text-black"
-                >
-                  🔄 Regen
-                </button>
+              <div class="mt-2">
                 <button 
                   @click="saveContactSheet" 
-                  class="flex-1 p-1 border-l-0 border bg-black text-white"
+                  class="w-full p-1 border bg-black text-white text-xs"
                 >
                   💾 Save
                 </button>
@@ -236,7 +271,7 @@
           </div>
         </div>
 
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           <!-- Skeleton placeholders for processing photos -->
           <div 
             v-for="(skeleton, index) in skeletonPhotos" 
@@ -264,9 +299,11 @@
             v-for="(photo, index) in photos" 
             :key="photo.id" 
             :class="[
-              'card-subtle bounce-in',
-              `stagger-${(index % 6) + 1}`
+              'card-subtle bounce-in cursor-pointer transition-all',
+              `stagger-${(index % 6) + 1}`,
+              previewPane.selectedPhotoIndex === index ? 'ring-2 ring-blue-500' : 'hover:shadow-md'
             ]"
+            @click="selectPhotoForPreview(index)"
           >
             <div class="p-3 border-b flex justify-between items-start">
               <div class="flex-1 min-w-0">
@@ -284,32 +321,52 @@
               </button>
             </div>
 
-            <div class="p-3">
+            <!-- Caption editing for video formats -->
+            <div v-if="isVideoFormat(globalSettings.printSize)" class="p-3 border-b">
+              <label class="block text-xs mb-1 text-luxury">Caption</label>
+              <input 
+                v-model="photo.customCaption"
+                @input="generatePrint(index)"
+                placeholder="Custom caption (leave empty for auto-generated)"
+                class="w-full p-2 text-xs border bg-white"
+              />
+              <div class="text-micro text-gray-400 mt-1">
+                Auto: {{ getImageCaption(photo) }}
+              </div>
+            </div>
+
+            <div class="p-2">
               <canvas 
-                :ref="el => canvasRefs[index] = el"
+                :ref="el => { 
+                  if (el) {
+                    canvasRefs[index] = el 
+                    $nextTick(() => generatePrint(index))
+                  }
+                }"
                 :width="getSizeConfig(globalSettings.printSize).width" 
                 :height="getSizeConfig(globalSettings.printSize).height"
-                class="w-full border"
+                class="w-full border max-h-32"
+                style="background: white;"
               ></canvas>
               
-              <div class="flex mt-2 text-xs">
-                <button 
-                  @click="generatePrint(index)" 
-                  class="flex-1 p-1 border bg-white text-black"
-                >
-                  🔄 Regen
-                </button>
+              <div class="mt-2">
                 <button 
                   @click="savePrint(index)" 
-                  class="flex-1 p-1 border-l-0 border bg-black text-white"
+                  class="w-full p-1 border bg-black text-white text-xs"
                 >
                   💾 Save
                 </button>
               </div>
             </div>
           </div>
+          </div>
         </div>
       </div>
+    </div>
+
+    <!-- Bottom Half: Preview Pane -->
+    <div v-if="previewPane.isVisible" class="h-1/2 bg-red-500 text-white border-t-2 border-gray-700 flex-shrink-0">
+      PREVIEW PANE IS VISIBLE
     </div>
   </div>
 </template>
@@ -335,7 +392,12 @@ export default {
         blackBorder: false,
         showFilenames: true,
         showExif: true,
-        commercialPrintSafe: true  // Default to safe mode for commercial printing
+        commercialPrintSafe: true,  // Default to safe mode for commercial printing
+        marginSize: 180  // Custom margin size in pixels (default to commercial safe)
+      },
+      previewPane: {
+        isVisible: false,
+        selectedPhotoIndex: null
       },
       downloadStatus: {
         isDownloading: false,
@@ -361,8 +423,9 @@ export default {
     }
   },
 
-  mounted() {
+  async mounted() {
     this.setupTauriDropEvents()
+    await this.loadFromLocalStorage()
   },
 
   beforeUnmount() {
@@ -377,7 +440,7 @@ export default {
 
   setup() {
     const { createPhotoFromExif, processPhoto, processPhotoFromPath, isImageFile } = usePhotoProcessing()
-    const { getSizeConfig } = usePrintSizes()
+    const { getSizeConfig, isVideoFormat } = usePrintSizes()
     const { generateContactSheet, calculateGrid } = useContactSheet()
     
     return {
@@ -386,8 +449,29 @@ export default {
       processPhotoFromPath,
       isImageFile,
       getSizeConfig,
+      isVideoFormat,
       generateContactSheet,
       calculateGrid
+    }
+  },
+
+  watch: {
+    'globalSettings.marginSize'() {
+      this.applyGlobalSettings()
+      if (this.previewPane.selectedPhotoIndex !== null) {
+        this.$nextTick(() => this.updatePreview())
+      }
+    },
+    'globalSettings.printSize'() {
+      if (this.previewPane.selectedPhotoIndex !== null) {
+        this.$nextTick(() => this.updatePreview())
+      }
+    },
+    globalSettings: {
+      handler() {
+        this.saveToLocalStorage()
+      },
+      deep: true
     }
   },
 
@@ -464,21 +548,142 @@ export default {
       }
     },
 
+    async generateVideoFormat(index, targetCanvas = null) {
+      const canvas = targetCanvas || this.canvasRefs[index]
+      const photo = this.photos[index]
+      
+      if (!canvas || !photo) return
+
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
+      const sizeConfig = this.getSizeConfig(this.globalSettings.printSize)
+      
+      img.onerror = (error) => {
+        console.warn('Image load error for photo:', photo.name, error)
+        // Fill with a placeholder color if image fails to load
+        ctx.fillStyle = '#f3f4f6'
+        ctx.fillRect(0, 0, sizeConfig.width, sizeConfig.height)
+        ctx.fillStyle = '#9ca3af'
+        ctx.font = '16px monospace'
+        ctx.textAlign = 'center'
+        ctx.fillText('Image Load Error', sizeConfig.width / 2, sizeConfig.height / 2)
+      }
+      
+      img.onload = () => {
+        // Black background for video format
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(0, 0, sizeConfig.width, sizeConfig.height)
+        
+        // Calculate video area (16:9 aspect ratio)
+        const videoWidth = sizeConfig.width
+        const videoHeight = this.globalSettings.printSize === 'video-4k' ? 2160 : 1080
+        const captionHeight = sizeConfig.height - videoHeight
+        
+        // Image area within video dimensions
+        const imgAspect = img.width / img.height
+        const videoAspect = videoWidth / videoHeight
+        
+        let drawWidth, drawHeight, drawX, drawY
+        
+        // Fit image within video area
+        if (imgAspect > videoAspect) {
+          drawWidth = videoWidth
+          drawHeight = videoWidth / imgAspect
+        } else {
+          drawHeight = videoHeight
+          drawWidth = videoHeight * imgAspect
+        }
+        
+        drawX = (videoWidth - drawWidth) / 2
+        drawY = (videoHeight - drawHeight) / 2
+        
+        // Draw the image
+        ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
+        
+        // Caption area
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(0, videoHeight, sizeConfig.width, captionHeight)
+        
+        // Caption text
+        const caption = this.getImageCaption(photo)
+        if (caption) {
+          // Dynamic font sizing based on caption length
+          let fontSize = Math.max(24, Math.min(36, Math.floor(sizeConfig.width / (caption.length * 0.6))))
+          
+          ctx.fillStyle = '#ffffff'
+          ctx.font = `${fontSize}px 'Monaco', 'Menlo', 'Ubuntu Mono', monospace`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          
+          const captionY = videoHeight + (captionHeight / 2)
+          ctx.fillText(caption, sizeConfig.width / 2, captionY)
+        }
+      }
+      
+      img.src = photo.imageUrl
+    },
+
+    getImageCaption(photo) {
+      // Create caption from EXIF data or use custom caption if available
+      if (photo.customCaption) {
+        return photo.customCaption
+      }
+      
+      // Generate caption from EXIF data
+      const parts = []
+      
+      // Camera info
+      const camera = [photo.exif.Make, photo.exif.Model].filter(Boolean).join(' ')
+      if (camera && camera !== 'Unknown Camera') {
+        parts.push(camera)
+      }
+      
+      // Lens info
+      if (photo.exif.LensModel) {
+        parts.push(photo.exif.LensModel)
+      }
+      
+      // Settings
+      const settings = []
+      if (photo.exif.FocalLength && photo.exif.FocalLength !== '50') settings.push(`${photo.exif.FocalLength}mm`)
+      if (photo.exif.FNumber && photo.exif.FNumber !== '5.6') settings.push(`f/${photo.exif.FNumber}`)
+      if (photo.exif.ExposureTime && photo.exif.ExposureTime !== '1/60') {
+        const speed = parseFloat(photo.exif.ExposureTime)
+        const formatted = speed >= 1 ? `${Math.round(speed)}s` : `1/${Math.round(1/speed)}s`
+        settings.push(formatted)
+      }
+      if (photo.exif.ISO && photo.exif.ISO !== '400') settings.push(`ISO ${photo.exif.ISO}`)
+      
+      if (settings.length > 0) {
+        parts.push(settings.join(' • '))
+      }
+      
+      return parts.join(' | ')
+    },
 
     async generatePrint(index) {
       const canvas = this.canvasRefs[index]
       
-      if (!canvas) return
+      if (!canvas) {
+        console.warn('No canvas found for index:', index)
+        return
+      }
       
       // Handle contact sheet differently
       if (this.globalSettings.printSize === 'contact') {
         await this.generateContactSheet(canvas, this.photos, {
           showFilenames: this.globalSettings.showFilenames,
           showExif: this.globalSettings.showExif,
-          margin: this.globalSettings.commercialPrintSafe ? 180 : 40,
+          margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 40),
           spacing: 12,
           fontSize: 10
         })
+        return
+      }
+
+      // Handle video formats differently
+      if (this.isVideoFormat(this.globalSettings.printSize)) {
+        await this.generateVideoFormat(index)
         return
       }
 
@@ -488,6 +693,17 @@ export default {
       const ctx = canvas.getContext('2d')
       const img = new Image()
       const sizeConfig = this.getSizeConfig(this.globalSettings.printSize)
+      
+      img.onerror = (error) => {
+        console.warn('Image load error for photo:', photo.name, error)
+        // Fill with a placeholder color if image fails to load
+        ctx.fillStyle = '#f3f4f6'
+        ctx.fillRect(0, 0, sizeConfig.width, sizeConfig.height)
+        ctx.fillStyle = '#9ca3af'
+        ctx.font = '16px monospace'
+        ctx.textAlign = 'center'
+        ctx.fillText('Image Load Error', sizeConfig.width / 2, sizeConfig.height / 2)
+      }
       
       img.onload = () => {
         ctx.fillStyle = 'white'
@@ -502,7 +718,9 @@ export default {
           imgHeight = img.width
         }
         
-        const borderSize = 90
+        // Use custom margin setting for both text and image boundaries
+        const pad = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 30)
+        const borderSize = Math.max(90, pad) // Ensure image doesn't go into text area
         const imageArea = {
           x: borderSize,
           y: borderSize,
@@ -549,54 +767,80 @@ export default {
         ctx.restore()
         
         if (this.globalSettings.blackBorder) {
+          // Refined border with subtle shadow effect
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
+          ctx.shadowBlur = 4
+          ctx.shadowOffsetX = 2
+          ctx.shadowOffsetY = 2
+          
           ctx.strokeStyle = '#000000'
-          ctx.lineWidth = 8
-          ctx.strokeRect(drawX - 4, drawY - 4, drawWidth + 8, drawHeight + 8)
+          ctx.lineWidth = 6 // Slightly thinner, more elegant
+          ctx.strokeRect(drawX - 3, drawY - 3, drawWidth + 6, drawHeight + 6)
+          
+          // Reset shadow
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
+          ctx.shadowOffsetX = 0
+          ctx.shadowOffsetY = 0
         }
         
-        // EXIF text
-        const fontSize = Math.floor(sizeConfig.width / 120)
-        ctx.fillStyle = '#222'
-        ctx.font = `${fontSize}px monospace`
+        // EXIF text with refined styling
+        const fontSize = Math.floor(sizeConfig.width / 100) // Slightly larger
+        ctx.fillStyle = '#1a1a1a' // Darker, more readable
+        ctx.font = `${fontSize}px 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace`
+        ctx.textBaseline = 'alphabetic'
         
-        // Commercial print safe margin (150px minimum, 180px for extra safety)
-        const SAFE_MARGIN = 150        // 0.5" at 300 DPI - minimum safe zone
-        const COMMERCIAL_MARGIN = 180   // 0.6" for extra safety with aggressive printers
-        const pad = this.globalSettings.commercialPrintSafe ? COMMERCIAL_MARGIN : 30
-        
-        // Camera
+        // Camera info with refined typography
         ctx.textAlign = 'left'
         const camera = [photo.exif.Make, photo.exif.Model].filter(Boolean).join(' ')
         if (camera && camera !== 'Unknown Camera') {
-          ctx.fillText(camera.toUpperCase(), pad, pad + fontSize)
+          // Add subtle text shadow for better readability
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+          ctx.shadowBlur = 1
+          ctx.fillText(camera.toUpperCase(), pad, pad + fontSize * 0.8)
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
         }
         
-        // Lens
+        // Lens info
         ctx.textAlign = 'right'
         if (photo.exif.LensModel) {
-          ctx.fillText(photo.exif.LensModel.toUpperCase(), sizeConfig.width - pad, pad + fontSize)
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+          ctx.shadowBlur = 1
+          ctx.fillText(photo.exif.LensModel.toUpperCase(), sizeConfig.width - pad, pad + fontSize * 0.8)
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
         }
         
-        // Settings
+        // Settings with improved formatting
         ctx.textAlign = 'left'
         const settings = []
-        if (photo.exif.FocalLength !== '50') settings.push(`${photo.exif.FocalLength}MM`)
-        if (photo.exif.FNumber !== '5.6') settings.push(`F${photo.exif.FNumber}`)
-        if (photo.exif.ExposureTime !== '1/60') {
+        if (photo.exif.FocalLength && photo.exif.FocalLength !== '50') settings.push(`${photo.exif.FocalLength}mm`)
+        if (photo.exif.FNumber && photo.exif.FNumber !== '5.6') settings.push(`ƒ${photo.exif.FNumber}`)
+        if (photo.exif.ExposureTime && photo.exif.ExposureTime !== '1/60') {
           const speed = parseFloat(photo.exif.ExposureTime)
-          const formatted = speed >= 1 ? `${Math.round(speed)}S` : `1/${Math.round(1/speed)}S`
+          const formatted = speed >= 1 ? `${Math.round(speed)}s` : `1/${Math.round(1/speed)}`
           settings.push(formatted)
         }
-        if (photo.exif.ISO !== '400') settings.push(`ISO${photo.exif.ISO}`)
+        if (photo.exif.ISO && photo.exif.ISO !== '400') settings.push(`ISO ${photo.exif.ISO}`)
         
         if (settings.length > 0) {
-          ctx.fillText(settings.join(' · '), pad, sizeConfig.height - pad)
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+          ctx.shadowBlur = 1
+          ctx.fillText(settings.join(' • '), pad, sizeConfig.height - pad - fontSize * 0.2)
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
         }
         
-        // Filename
+        // Filename with better truncation
         ctx.textAlign = 'right'
-        const name = photo.name.length > 50 ? photo.name.substring(0, 47) + '…' : photo.name
-        ctx.fillText(name.toUpperCase(), sizeConfig.width - pad, sizeConfig.height - pad)
+        const maxLength = Math.floor(sizeConfig.width / (fontSize * 0.6))
+        const name = photo.name.length > maxLength ? photo.name.substring(0, maxLength - 3) + '…' : photo.name
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+        ctx.shadowBlur = 1
+        ctx.fillText(name.toUpperCase(), sizeConfig.width - pad, sizeConfig.height - pad - fontSize * 0.2)
+        ctx.shadowColor = 'transparent'
+        ctx.shadowBlur = 0
         
         // Date
         if (photo.exif.DateTimeOriginal) {
@@ -697,6 +941,11 @@ export default {
         this.photos.forEach((photo, index) => {
           this.generatePrint(index)
         })
+        
+        // Also update contact sheet if we're in contact mode
+        if (this.globalSettings.printSize === 'contact') {
+          this.regenerateContactSheet()
+        }
       })
     },
 
@@ -707,8 +956,15 @@ export default {
           
         for (const filePath of filePaths) {
           const photo = await this.processPhotoFromPath(filePath)
-          if (photo) this.photos.push(photo)
+          if (photo) {
+            this.photos.push(photo)
+          }
         }
+        // Generate all canvases after all photos are added
+        this.$nextTick(() => {
+          this.applyGlobalSettings()
+        })
+        this.saveToLocalStorage()
         this.isProcessingFiles = false
       } catch (error) {
         this.isProcessingFiles = false
@@ -730,6 +986,11 @@ export default {
             const photo = await this.processPhoto(file)
             this.photos.push(photo)
           }
+          // Generate all canvases after all photos are added
+          this.$nextTick(() => {
+            this.applyGlobalSettings()
+          })
+          this.saveToLocalStorage()
         }
         
         input.click()
@@ -743,8 +1004,15 @@ export default {
           
         for (const filePath of filePaths) {
           const photo = await this.processPhotoFromPath(filePath)
-          if (photo) this.photos.push(photo)
+          if (photo) {
+            this.photos.push(photo)
+          }
         }
+        // Generate all canvases after all photos are added
+        this.$nextTick(() => {
+          this.applyGlobalSettings()
+        })
+        this.saveToLocalStorage()
         this.isProcessingFiles = false
       } catch (error) {
         this.isProcessingFiles = false
@@ -766,6 +1034,11 @@ export default {
             const photo = await this.processPhoto(file)
             this.photos.push(photo)
           }
+          // Generate all canvases after all photos are added
+          this.$nextTick(() => {
+            this.applyGlobalSettings()
+          })
+          this.saveToLocalStorage()
         }
         
         input.click()
@@ -776,6 +1049,284 @@ export default {
       this.photos.splice(index, 1)
       // Clear the canvas ref for the removed photo
       this.canvasRefs.splice(index, 1)
+      this.saveToLocalStorage()
+    },
+
+    togglePreviewPane() {
+      if (this.previewPane.isVisible && this.photos.length > 0 && this.previewPane.selectedPhotoIndex === null) {
+        this.previewPane.selectedPhotoIndex = 0
+        this.$nextTick(() => {
+          this.updatePreview()
+        })
+      }
+    },
+
+    selectPhotoForPreview(index) {
+      this.previewPane.selectedPhotoIndex = index
+      this.previewPane.isVisible = true
+      this.$nextTick(() => {
+        this.updatePreview()
+      })
+    },
+
+    async updatePreview() {
+      if (this.previewPane.selectedPhotoIndex === null) return
+      
+      const previewCanvas = this.$refs.previewCanvas
+      if (!previewCanvas) return
+
+      // Use the same generation logic as the main canvas
+      if (this.globalSettings.printSize === 'contact') {
+        // Contact sheet preview not implemented for now
+        return
+      } else if (this.isVideoFormat(this.globalSettings.printSize)) {
+        await this.generateVideoFormat(this.previewPane.selectedPhotoIndex, previewCanvas)
+      } else {
+        await this.generatePrintForCanvas(this.previewPane.selectedPhotoIndex, previewCanvas)
+      }
+    },
+
+    async generatePrintForCanvas(index, targetCanvas) {
+      const photo = this.photos[index]
+      if (!photo || !targetCanvas) return
+
+      const ctx = targetCanvas.getContext('2d')
+      const img = new Image()
+      const sizeConfig = this.getSizeConfig(this.globalSettings.printSize)
+      
+      img.onload = () => {
+        ctx.fillStyle = 'white'
+        ctx.fillRect(0, 0, sizeConfig.width, sizeConfig.height)
+        
+        const isPortrait = img.height > img.width
+        let imgWidth = img.width
+        let imgHeight = img.height
+        
+        if (isPortrait) {
+          imgWidth = img.height
+          imgHeight = img.width
+        }
+        
+        // Use custom margin setting for both text and image boundaries
+        const pad = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 30)
+        const borderSize = Math.max(90, pad) // Ensure image doesn't go into text area
+        const imageArea = {
+          x: borderSize,
+          y: borderSize,
+          width: sizeConfig.width - (borderSize * 2),
+          height: sizeConfig.height - (borderSize * 2)
+        }
+        
+        const imgAspect = imgWidth / imgHeight
+        const areaAspect = imageArea.width / imageArea.height
+        
+        let drawWidth, drawHeight
+        
+        if (this.globalSettings.fitMode === 'fit') {
+          if (imgAspect > areaAspect) {
+            drawWidth = imageArea.width
+            drawHeight = imageArea.width / imgAspect
+          } else {
+            drawHeight = imageArea.height
+            drawWidth = imageArea.height * imgAspect
+          }
+        } else {
+          if (imgAspect > areaAspect) {
+            drawHeight = imageArea.height
+            drawWidth = imageArea.height * imgAspect
+          } else {
+            drawWidth = imageArea.width
+            drawHeight = imageArea.width / imgAspect
+          }
+        }
+        
+        const drawX = imageArea.x + (imageArea.width - drawWidth) / 2
+        const drawY = imageArea.y + (imageArea.height - drawHeight) / 2
+        
+        ctx.save()
+        
+        if (isPortrait) {
+          ctx.translate(drawX + drawWidth/2, drawY + drawHeight/2)
+          ctx.rotate(Math.PI/2)
+          ctx.drawImage(img, -drawHeight/2, -drawWidth/2, drawHeight, drawWidth)
+        } else {
+          ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
+        }
+        
+        ctx.restore()
+        
+        if (this.globalSettings.blackBorder) {
+          // Refined border with subtle shadow effect
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
+          ctx.shadowBlur = 4
+          ctx.shadowOffsetX = 2
+          ctx.shadowOffsetY = 2
+          
+          ctx.strokeStyle = '#000000'
+          ctx.lineWidth = 6 // Slightly thinner, more elegant
+          ctx.strokeRect(drawX - 3, drawY - 3, drawWidth + 6, drawHeight + 6)
+          
+          // Reset shadow
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
+          ctx.shadowOffsetX = 0
+          ctx.shadowOffsetY = 0
+        }
+        
+        // EXIF text with refined styling
+        const fontSize = Math.floor(sizeConfig.width / 100) // Slightly larger
+        ctx.fillStyle = '#1a1a1a' // Darker, more readable
+        ctx.font = `${fontSize}px 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace`
+        ctx.textBaseline = 'alphabetic'
+        
+        // Camera info with refined typography
+        ctx.textAlign = 'left'
+        const camera = [photo.exif.Make, photo.exif.Model].filter(Boolean).join(' ')
+        if (camera && camera !== 'Unknown Camera') {
+          // Add subtle text shadow for better readability
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+          ctx.shadowBlur = 1
+          ctx.fillText(camera.toUpperCase(), pad, pad + fontSize * 0.8)
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
+        }
+        
+        // Lens info
+        ctx.textAlign = 'right'
+        if (photo.exif.LensModel) {
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+          ctx.shadowBlur = 1
+          ctx.fillText(photo.exif.LensModel.toUpperCase(), sizeConfig.width - pad, pad + fontSize * 0.8)
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
+        }
+        
+        // Settings with improved formatting
+        ctx.textAlign = 'left'
+        const settings = []
+        if (photo.exif.FocalLength && photo.exif.FocalLength !== '50') settings.push(`${photo.exif.FocalLength}mm`)
+        if (photo.exif.FNumber && photo.exif.FNumber !== '5.6') settings.push(`ƒ${photo.exif.FNumber}`)
+        if (photo.exif.ExposureTime && photo.exif.ExposureTime !== '1/60') {
+          const speed = parseFloat(photo.exif.ExposureTime)
+          const formatted = speed >= 1 ? `${Math.round(speed)}s` : `1/${Math.round(1/speed)}`
+          settings.push(formatted)
+        }
+        if (photo.exif.ISO && photo.exif.ISO !== '400') settings.push(`ISO ${photo.exif.ISO}`)
+        
+        if (settings.length > 0) {
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+          ctx.shadowBlur = 1
+          ctx.fillText(settings.join(' • '), pad, sizeConfig.height - pad - fontSize * 0.2)
+          ctx.shadowColor = 'transparent'
+          ctx.shadowBlur = 0
+        }
+        
+        // Filename with better truncation
+        ctx.textAlign = 'right'
+        const maxLength = Math.floor(sizeConfig.width / (fontSize * 0.6))
+        const name = photo.name.length > maxLength ? photo.name.substring(0, maxLength - 3) + '…' : photo.name
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
+        ctx.shadowBlur = 1
+        ctx.fillText(name.toUpperCase(), sizeConfig.width - pad, sizeConfig.height - pad - fontSize * 0.2)
+        ctx.shadowColor = 'transparent'
+        ctx.shadowBlur = 0
+        
+        // Date
+        if (photo.exif.DateTimeOriginal) {
+          ctx.save()
+          ctx.textAlign = 'center'
+          ctx.translate(sizeConfig.width - pad, sizeConfig.height / 2)
+          ctx.rotate(-Math.PI / 2)
+          
+          const date = new Date(photo.exif.DateTimeOriginal)
+          const formatted = `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getFullYear()).slice(-2)} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+          
+          ctx.fillText(formatted, 0, 0)
+          ctx.restore()
+        }
+      }
+      
+      img.src = photo.imageUrl
+    },
+
+    saveToLocalStorage() {
+      try {
+        const dataToSave = {
+          photos: this.photos.map(photo => ({
+            ...photo,
+            // Don't save the File object or blob URLs for web, but keep filePath for Tauri
+            file: undefined,
+            imageUrl: photo.filePath ? undefined : photo.imageUrl // Keep blob URL only if no filePath
+          })),
+          globalSettings: this.globalSettings,
+          previewPane: this.previewPane
+        }
+        localStorage.setItem('exif-printer-data', JSON.stringify(dataToSave))
+      } catch (error) {
+        console.warn('Failed to save to localStorage:', error)
+      }
+    },
+
+    async loadFromLocalStorage() {
+      try {
+        const saved = localStorage.getItem('exif-printer-data')
+        if (!saved) return
+
+        const data = JSON.parse(saved)
+        
+        // Restore settings
+        if (data.globalSettings) {
+          this.globalSettings = { ...this.globalSettings, ...data.globalSettings }
+        }
+        
+        if (data.previewPane) {
+          this.previewPane = { ...this.previewPane, ...data.previewPane }
+        }
+
+        // Restore photos
+        if (data.photos && data.photos.length > 0) {
+          for (const photoData of data.photos) {
+            let restoredPhoto = null
+            
+            // Try to restore from file path first (Tauri)
+            if (photoData.filePath) {
+              try {
+                restoredPhoto = await this.processPhotoFromPath(photoData.filePath)
+                if (restoredPhoto) {
+                  // Preserve custom caption
+                  if (photoData.customCaption) {
+                    restoredPhoto.customCaption = photoData.customCaption
+                  }
+                }
+              } catch (error) {
+                console.warn('Could not restore photo from path:', photoData.filePath, error)
+              }
+            }
+            
+            // Fallback: restore from saved data (web/blob URLs)
+            if (!restoredPhoto && photoData.imageUrl) {
+              restoredPhoto = {
+                ...photoData,
+                id: Date.now() + Math.random() // Generate new ID
+              }
+            }
+            
+            if (restoredPhoto) {
+              this.photos.push(restoredPhoto)
+            }
+          }
+          
+          // Generate canvases for restored photos  
+          this.$nextTick(() => {
+            // Wait a bit more for DOM to be ready
+            setTimeout(() => {
+              this.applyGlobalSettings()
+            }, 100)
+          })
+        }
+      } catch (error) {
+        console.warn('Failed to load from localStorage:', error)
+      }
     },
 
     clearAllPhotos() {
@@ -786,6 +1337,8 @@ export default {
         this.downloadStatus.lastDownloadPath = null
         this.downloadStatus.downloadCount = 0
         this.processingCount = 0
+        this.previewPane.selectedPhotoIndex = null
+        this.saveToLocalStorage() // Clear from storage too
       }
     },
 
@@ -806,7 +1359,7 @@ export default {
       await this.generateContactSheet(canvas, this.photos, {
         showFilenames: this.globalSettings.showFilenames,
         showExif: this.globalSettings.showExif,
-        margin: this.globalSettings.commercialPrintSafe ? 180 : 40,
+        margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 40),
         spacing: 12,
         fontSize: 10
       })

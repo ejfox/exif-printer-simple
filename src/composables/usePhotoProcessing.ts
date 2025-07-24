@@ -24,6 +24,7 @@ export interface Photo {
   imageUrl: string
   file?: File
   exif: PhotoExif
+  customCaption?: string
 }
 
 export function usePhotoProcessing() {

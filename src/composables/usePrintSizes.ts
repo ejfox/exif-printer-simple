@@ -3,7 +3,7 @@ export interface PrintSize {
   height: number
 }
 
-export type PrintSizeKey = '4x6' | '5x7' | '8x10' | '8x12' | '11x14' | 'square' | 'contact'
+export type PrintSizeKey = '4x6' | '5x7' | '8x10' | '8x12' | '11x14' | 'square' | 'contact' | 'video-4k' | 'video-1080p'
 
 export function usePrintSizes() {
   const sizes: Record<PrintSizeKey, PrintSize> = {
@@ -13,7 +13,9 @@ export function usePrintSizes() {
     '8x12': { width: 3600, height: 2400 },
     '11x14': { width: 4200, height: 3300 },
     'square': { width: 1500, height: 1500 },
-    'contact': { width: 3000, height: 2400 } // 8x10 for contact sheets
+    'contact': { width: 3000, height: 2400 }, // 8x10 for contact sheets
+    'video-4k': { width: 3840, height: 2800 }, // 4K with extra height for captions
+    'video-1080p': { width: 1920, height: 1400 } // 1080p with extra height for captions
   }
 
   const getSizeConfig = (printSize: PrintSizeKey): PrintSize => {
@@ -30,6 +32,10 @@ export function usePrintSizes() {
     return config.width === config.height
   }
 
+  const isVideoFormat = (printSize: PrintSizeKey): boolean => {
+    return printSize.startsWith('video-')
+  }
+
   const getAllSizes = (): Record<PrintSizeKey, PrintSize> => {
     return Object.fromEntries(
       Object.entries(sizes).map(([key, value]) => [key, { ...value }])
@@ -40,6 +46,7 @@ export function usePrintSizes() {
     getSizeConfig,
     getAspectRatio,
     isSquare,
+    isVideoFormat,
     getAllSizes
   }
 }
