@@ -7,9 +7,9 @@
     </div>
 
     <!-- Top Half: Sidebar + Grid -->
-    <div class="flex flex-1" :class="{ 'h-1/2': previewPane.isVisible }">
+    <div class="flex flex-1 overflow-hidden" :class="{ 'h-1/2': previewPane.isVisible }">
       <!-- Sidebar -->
-      <div class="w-64 border-r card-subtle flex-shrink-0">
+      <div class="w-64 border-r card-subtle flex-shrink-0 overflow-y-auto">
         <!-- Drop Zone -->
         <div class="p-4 border-b">
           <div 
@@ -136,12 +136,12 @@
 
           <div>
             <label class="block text-xs mb-1">EXIF Margin (px)</label>
-            <input 
-              type="range" 
-              v-model.number="globalSettings.marginSize" 
+            <input
+              type="range"
+              v-model.number="globalSettings.marginSize"
               @input="applyGlobalSettings"
-              min="30" 
-              max="300" 
+              min="30"
+              max="300"
               step="10"
               class="w-full"
             >
@@ -156,19 +156,24 @@
           </div>
 
           <div>
-            <label class="flex text-xs">
-              <input 
-                type="checkbox" 
-                v-model="previewPane.isVisible"
-                @change="togglePreviewPane"
-                class="mr-2"
-              >
-              Show preview pane ({{ previewPane.isVisible }})
-            </label>
-            <div class="text-micro text-gray-500 mt-1">
-              Large preview to read EXIF text clearly
+            <label class="block text-xs mb-1">Text Size</label>
+            <input
+              type="range"
+              v-model.number="globalSettings.textSize"
+              @input="applyGlobalSettings"
+              min="0.7"
+              max="2.0"
+              step="0.1"
+              class="w-full"
+            >
+            <div class="flex justify-between text-micro text-gray-500 mt-1">
+              <span>Small</span>
+              <span>{{ globalSettings.textSize }}x</span>
+              <span>Large</span>
             </div>
           </div>
+
+          <!-- Preview pane option disabled for now -->
 
           <div v-if="globalSettings.printSize === 'contact'" class="space-y-2">
             <label class="flex text-xs">
@@ -336,22 +341,23 @@
             </div>
 
             <div class="p-2">
-              <canvas 
-                :ref="el => { 
-                  if (el) {
-                    canvasRefs[index] = el 
-                    $nextTick(() => generatePrint(index))
-                  }
-                }"
-                :width="getSizeConfig(globalSettings.printSize).width" 
-                :height="getSizeConfig(globalSettings.printSize).height"
-                class="w-full border max-h-32"
-                style="background: white;"
-              ></canvas>
-              
+              <div class="flex justify-center">
+                <canvas
+                  :ref="el => {
+                    if (el) {
+                      canvasRefs[index] = el
+                      $nextTick(() => generatePrint(index))
+                    }
+                  }"
+                  :width="getSizeConfig(globalSettings.printSize).width"
+                  :height="getSizeConfig(globalSettings.printSize).height"
+                  class="border"
+                  style="background: white; max-width: 100%; height: auto;"
+                ></canvas>
+              </div>
               <div class="mt-2">
-                <button 
-                  @click="savePrint(index)" 
+                <button
+                  @click.stop="savePrint(index)"
                   class="w-full p-1 border bg-black text-white text-xs"
                 >
                   💾 Save
@@ -364,10 +370,8 @@
       </div>
     </div>
 
-    <!-- Bottom Half: Preview Pane -->
-    <div v-if="previewPane.isVisible" class="h-1/2 bg-red-500 text-white border-t-2 border-gray-700 flex-shrink-0">
-      PREVIEW PANE IS VISIBLE
-    </div>
+    <!-- Preview Pane - DISABLED for now -->
+    <!-- TODO: Fix preview pane properly later -->
   </div>
 </template>
 
@@ -393,7 +397,8 @@ export default {
         showFilenames: true,
         showExif: true,
         commercialPrintSafe: true,  // Default to safe mode for commercial printing
-        marginSize: 180  // Custom margin size in pixels (default to commercial safe)
+        marginSize: 180,  // Custom margin size in pixels (default to commercial safe)
+        textSize: 1.0  // Text size multiplier (0.5 to 2.0)
       },
       previewPane: {
         isVisible: false,
@@ -457,6 +462,12 @@ export default {
 
   watch: {
     'globalSettings.marginSize'() {
+      this.applyGlobalSettings()
+      if (this.previewPane.selectedPhotoIndex !== null) {
+        this.$nextTick(() => this.updatePreview())
+      }
+    },
+    'globalSettings.textSize'() {
       this.applyGlobalSettings()
       if (this.previewPane.selectedPhotoIndex !== null) {
         this.$nextTick(() => this.updatePreview())
@@ -718,14 +729,17 @@ export default {
           imgHeight = img.width
         }
         
-        // Use custom margin setting for both text and image boundaries
-        const pad = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 30)
-        const borderSize = Math.max(90, pad) // Ensure image doesn't go into text area
+        // Text padding is fixed near edge, image margin is adjustable
+        const textPad = 30 // Text always near edge
+        const fontSize = Math.floor((sizeConfig.width / 100) * this.globalSettings.textSize)
+        const minMargin = textPad + fontSize * 1.5 // Minimum to ensure text is visible
+        const requestedMargin = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 90)
+        const imageMargin = Math.max(minMargin, requestedMargin)
         const imageArea = {
-          x: borderSize,
-          y: borderSize,
-          width: sizeConfig.width - (borderSize * 2),
-          height: sizeConfig.height - (borderSize * 2)
+          x: imageMargin,
+          y: imageMargin,
+          width: sizeConfig.width - (imageMargin * 2),
+          height: sizeConfig.height - (imageMargin * 2)
         }
         
         const imgAspect = imgWidth / imgHeight
@@ -785,11 +799,10 @@ export default {
         }
         
         // EXIF text with refined styling
-        const fontSize = Math.floor(sizeConfig.width / 100) // Slightly larger
         ctx.fillStyle = '#1a1a1a' // Darker, more readable
         ctx.font = `${fontSize}px 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace`
         ctx.textBaseline = 'alphabetic'
-        
+
         // Camera info with refined typography
         ctx.textAlign = 'left'
         const camera = [photo.exif.Make, photo.exif.Model].filter(Boolean).join(' ')
@@ -797,17 +810,17 @@ export default {
           // Add subtle text shadow for better readability
           ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
           ctx.shadowBlur = 1
-          ctx.fillText(camera.toUpperCase(), pad, pad + fontSize * 0.8)
+          ctx.fillText(camera.toUpperCase(), textPad, textPad + fontSize * 0.8)
           ctx.shadowColor = 'transparent'
           ctx.shadowBlur = 0
         }
-        
+
         // Lens info
         ctx.textAlign = 'right'
         if (photo.exif.LensModel) {
           ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
           ctx.shadowBlur = 1
-          ctx.fillText(photo.exif.LensModel.toUpperCase(), sizeConfig.width - pad, pad + fontSize * 0.8)
+          ctx.fillText(photo.exif.LensModel.toUpperCase(), sizeConfig.width - textPad, textPad + fontSize * 0.8)
           ctx.shadowColor = 'transparent'
           ctx.shadowBlur = 0
         }
@@ -827,7 +840,7 @@ export default {
         if (settings.length > 0) {
           ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
           ctx.shadowBlur = 1
-          ctx.fillText(settings.join(' • '), pad, sizeConfig.height - pad - fontSize * 0.2)
+          ctx.fillText(settings.join(' • '), textPad, sizeConfig.height - textPad - fontSize * 0.2)
           ctx.shadowColor = 'transparent'
           ctx.shadowBlur = 0
         }
@@ -838,7 +851,7 @@ export default {
         const name = photo.name.length > maxLength ? photo.name.substring(0, maxLength - 3) + '…' : photo.name
         ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
         ctx.shadowBlur = 1
-        ctx.fillText(name.toUpperCase(), sizeConfig.width - pad, sizeConfig.height - pad - fontSize * 0.2)
+        ctx.fillText(name.toUpperCase(), sizeConfig.width - textPad, sizeConfig.height - textPad - fontSize * 0.2)
         ctx.shadowColor = 'transparent'
         ctx.shadowBlur = 0
         
@@ -846,7 +859,7 @@ export default {
         if (photo.exif.DateTimeOriginal) {
           ctx.save()
           ctx.textAlign = 'center'
-          ctx.translate(sizeConfig.width - pad, sizeConfig.height / 2)
+          ctx.translate(sizeConfig.width - textPad, sizeConfig.height / 2)
           ctx.rotate(-Math.PI / 2)
           
           const date = new Date(photo.exif.DateTimeOriginal)
@@ -1063,10 +1076,12 @@ export default {
 
     selectPhotoForPreview(index) {
       this.previewPane.selectedPhotoIndex = index
-      this.previewPane.isVisible = true
-      this.$nextTick(() => {
-        this.updatePreview()
-      })
+      // Only update preview if pane is already visible
+      if (this.previewPane.isVisible) {
+        this.$nextTick(() => {
+          this.updatePreview()
+        })
+      }
     },
 
     async updatePreview() {
@@ -1107,14 +1122,17 @@ export default {
           imgHeight = img.width
         }
         
-        // Use custom margin setting for both text and image boundaries
-        const pad = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 30)
-        const borderSize = Math.max(90, pad) // Ensure image doesn't go into text area
+        // Text padding is fixed near edge, image margin is adjustable
+        const textPad = 30 // Text always near edge
+        const fontSize = Math.floor((sizeConfig.width / 100) * this.globalSettings.textSize)
+        const minMargin = textPad + fontSize * 1.5 // Minimum to ensure text is visible
+        const requestedMargin = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 90)
+        const imageMargin = Math.max(minMargin, requestedMargin)
         const imageArea = {
-          x: borderSize,
-          y: borderSize,
-          width: sizeConfig.width - (borderSize * 2),
-          height: sizeConfig.height - (borderSize * 2)
+          x: imageMargin,
+          y: imageMargin,
+          width: sizeConfig.width - (imageMargin * 2),
+          height: sizeConfig.height - (imageMargin * 2)
         }
         
         const imgAspect = imgWidth / imgHeight
@@ -1174,11 +1192,10 @@ export default {
         }
         
         // EXIF text with refined styling
-        const fontSize = Math.floor(sizeConfig.width / 100) // Slightly larger
         ctx.fillStyle = '#1a1a1a' // Darker, more readable
         ctx.font = `${fontSize}px 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace`
         ctx.textBaseline = 'alphabetic'
-        
+
         // Camera info with refined typography
         ctx.textAlign = 'left'
         const camera = [photo.exif.Make, photo.exif.Model].filter(Boolean).join(' ')
@@ -1186,17 +1203,17 @@ export default {
           // Add subtle text shadow for better readability
           ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
           ctx.shadowBlur = 1
-          ctx.fillText(camera.toUpperCase(), pad, pad + fontSize * 0.8)
+          ctx.fillText(camera.toUpperCase(), textPad, textPad + fontSize * 0.8)
           ctx.shadowColor = 'transparent'
           ctx.shadowBlur = 0
         }
-        
+
         // Lens info
         ctx.textAlign = 'right'
         if (photo.exif.LensModel) {
           ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
           ctx.shadowBlur = 1
-          ctx.fillText(photo.exif.LensModel.toUpperCase(), sizeConfig.width - pad, pad + fontSize * 0.8)
+          ctx.fillText(photo.exif.LensModel.toUpperCase(), sizeConfig.width - textPad, textPad + fontSize * 0.8)
           ctx.shadowColor = 'transparent'
           ctx.shadowBlur = 0
         }
@@ -1216,7 +1233,7 @@ export default {
         if (settings.length > 0) {
           ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
           ctx.shadowBlur = 1
-          ctx.fillText(settings.join(' • '), pad, sizeConfig.height - pad - fontSize * 0.2)
+          ctx.fillText(settings.join(' • '), textPad, sizeConfig.height - textPad - fontSize * 0.2)
           ctx.shadowColor = 'transparent'
           ctx.shadowBlur = 0
         }
@@ -1227,7 +1244,7 @@ export default {
         const name = photo.name.length > maxLength ? photo.name.substring(0, maxLength - 3) + '…' : photo.name
         ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'
         ctx.shadowBlur = 1
-        ctx.fillText(name.toUpperCase(), sizeConfig.width - pad, sizeConfig.height - pad - fontSize * 0.2)
+        ctx.fillText(name.toUpperCase(), sizeConfig.width - textPad, sizeConfig.height - textPad - fontSize * 0.2)
         ctx.shadowColor = 'transparent'
         ctx.shadowBlur = 0
         
@@ -1235,7 +1252,7 @@ export default {
         if (photo.exif.DateTimeOriginal) {
           ctx.save()
           ctx.textAlign = 'center'
-          ctx.translate(sizeConfig.width - pad, sizeConfig.height / 2)
+          ctx.translate(sizeConfig.width - textPad, sizeConfig.height / 2)
           ctx.rotate(-Math.PI / 2)
           
           const date = new Date(photo.exif.DateTimeOriginal)
