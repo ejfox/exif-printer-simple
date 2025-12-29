@@ -45,13 +45,16 @@ describe('usePrintSizes', () => {
   describe('getAllSizes', () => {
     it('should return all available sizes', () => {
       const allSizes = getAllSizes()
-      expect(Object.keys(allSizes)).toHaveLength(6)
+      expect(Object.keys(allSizes)).toHaveLength(9)
       expect(allSizes).toHaveProperty('4x6')
       expect(allSizes).toHaveProperty('5x7')
       expect(allSizes).toHaveProperty('8x10')
       expect(allSizes).toHaveProperty('8x12')
       expect(allSizes).toHaveProperty('11x14')
       expect(allSizes).toHaveProperty('square')
+      expect(allSizes).toHaveProperty('contact')
+      expect(allSizes).toHaveProperty('video-4k')
+      expect(allSizes).toHaveProperty('video-1080p')
     })
 
     it('should return a copy of sizes (not reference)', () => {
