@@ -130,7 +130,7 @@
               Commercial print safe
             </label>
             <div v-if="globalSettings.commercialPrintSafe" class="text-micro text-gray-500 ml-5 mt-1">
-              Adds wider margins for Walgreens, CVS, Walmart
+              Protects against aggressive cutting at Walgreens, CVS, Walmart (0.25" safety margin)
             </div>
           </div>
 
@@ -685,7 +685,7 @@ export default {
         await this.generateContactSheet(canvas, this.photos, {
           showFilenames: this.globalSettings.showFilenames,
           showExif: this.globalSettings.showExif,
-          margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 40),
+          margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 60),
           spacing: 12,
           fontSize: 10
         })
@@ -729,8 +729,10 @@ export default {
           imgHeight = img.width
         }
         
-        // Text padding is fixed near edge, image margin is adjustable
-        const textPad = 30 // Text always near edge
+        // Text padding accounts for commercial printer cutting (0.125"-0.25" = 37.5-75px at 300 DPI)
+        // Commercial printers like CVS/Walmart can cut aggressively, so we need wider safety margins
+        const baseSafety = this.globalSettings.commercialPrintSafe ? 75 : 30 // Increased from 30 to 75px for commercial
+        const textPad = baseSafety // Text safety margin from edge
         const fontSize = Math.floor((sizeConfig.width / 100) * this.globalSettings.textSize)
         const minMargin = textPad + fontSize * 1.5 // Minimum to ensure text is visible
         const requestedMargin = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 90)
@@ -1122,8 +1124,10 @@ export default {
           imgHeight = img.width
         }
         
-        // Text padding is fixed near edge, image margin is adjustable
-        const textPad = 30 // Text always near edge
+        // Text padding accounts for commercial printer cutting (0.125"-0.25" = 37.5-75px at 300 DPI)
+        // Commercial printers like CVS/Walmart can cut aggressively, so we need wider safety margins
+        const baseSafety = this.globalSettings.commercialPrintSafe ? 75 : 30 // Increased from 30 to 75px for commercial
+        const textPad = baseSafety // Text safety margin from edge
         const fontSize = Math.floor((sizeConfig.width / 100) * this.globalSettings.textSize)
         const minMargin = textPad + fontSize * 1.5 // Minimum to ensure text is visible
         const requestedMargin = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 90)
@@ -1376,7 +1380,7 @@ export default {
       await this.generateContactSheet(canvas, this.photos, {
         showFilenames: this.globalSettings.showFilenames,
         showExif: this.globalSettings.showExif,
-        margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 40),
+        margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 60),
         spacing: 12,
         fontSize: 10
       })
