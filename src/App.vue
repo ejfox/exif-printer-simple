@@ -130,7 +130,184 @@
               Commercial print safe
             </label>
             <div v-if="globalSettings.commercialPrintSafe" class="text-micro text-gray-500 ml-5 mt-1">
-              Adds wider margins for Walgreens, CVS, Walmart
+              Protects against aggressive cutting at Walgreens, CVS, Walmart (0.25" safety margin)
+            </div>
+          </div>
+
+          <!-- Advanced Margins Toggle -->
+          <div>
+            <button 
+              @click="globalSettings.showAdvancedMargins = !globalSettings.showAdvancedMargins"
+              class="w-full p-2 text-xs border bg-white text-black hover:bg-gray-50 flex justify-between items-center"
+            >
+              <span>⚙️ Advanced Margin Controls</span>
+              <span>{{ globalSettings.showAdvancedMargins ? '▼' : '▶' }}</span>
+            </button>
+          </div>
+
+          <!-- Advanced Margin Controls -->
+          <div v-if="globalSettings.showAdvancedMargins" class="space-y-3 p-3 border bg-gray-50 rounded">
+            <!-- Text Bleed Margin -->
+            <div>
+              <label class="flex text-xs mb-1 justify-between">
+                <span>Text Safety Margin</span>
+                <button 
+                  v-if="globalSettings.textBleedMargin !== null"
+                  @click="globalSettings.textBleedMargin = null; applyGlobalSettings()"
+                  class="text-micro text-blue-600 hover:underline"
+                >
+                  Reset to auto
+                </button>
+              </label>
+              <input
+                type="range"
+                v-model.number="globalSettings.textBleedMargin"
+                @input="applyGlobalSettings"
+                min="20"
+                max="150"
+                step="5"
+                class="w-full"
+              >
+              <div class="flex justify-between text-micro text-gray-500 mt-1">
+                <span>20px</span>
+                <span>{{ globalSettings.textBleedMargin || 'Auto (' + (globalSettings.commercialPrintSafe ? '75' : '30') + 'px)' }}</span>
+                <span>150px</span>
+              </div>
+              <div class="text-micro text-gray-400 mt-1">
+                Distance from edge to EXIF text ({{ Math.round((globalSettings.textBleedMargin || (globalSettings.commercialPrintSafe ? 75 : 30)) / 300 * 100) / 100 }}" at 300 DPI)
+              </div>
+            </div>
+
+            <!-- Image Bleed Margin -->
+            <div>
+              <label class="flex text-xs mb-1 justify-between">
+                <span>Image Safety Margin</span>
+                <button 
+                  v-if="globalSettings.imageBleedMargin !== null"
+                  @click="globalSettings.imageBleedMargin = null; applyGlobalSettings()"
+                  class="text-micro text-blue-600 hover:underline"
+                >
+                  Reset to auto
+                </button>
+              </label>
+              <input
+                type="range"
+                v-model.number="globalSettings.imageBleedMargin"
+                @input="applyGlobalSettings"
+                min="30"
+                max="300"
+                step="10"
+                class="w-full"
+              >
+              <div class="flex justify-between text-micro text-gray-500 mt-1">
+                <span>30px</span>
+                <span>{{ globalSettings.imageBleedMargin || 'Auto (' + (globalSettings.commercialPrintSafe ? '180' : '90') + 'px)' }}</span>
+                <span>300px</span>
+              </div>
+              <div class="text-micro text-gray-400 mt-1">
+                Distance from edge to image ({{ Math.round((globalSettings.imageBleedMargin || (globalSettings.commercialPrintSafe ? 180 : 90)) / 300 * 100) / 100 }}" at 300 DPI)
+              </div>
+            </div>
+
+            <!-- Individual Side Margins -->
+            <div class="border-t pt-3">
+              <div class="text-xs mb-2 text-luxury">Individual Side Overrides</div>
+              <div class="grid grid-cols-2 gap-2">
+                <!-- Top Margin -->
+                <div>
+                  <label class="flex text-micro mb-1 justify-between">
+                    <span>Top</span>
+                    <button 
+                      v-if="globalSettings.topMargin !== null"
+                      @click="globalSettings.topMargin = null; applyGlobalSettings()"
+                      class="text-micro text-blue-600 hover:underline"
+                    >
+                      Reset
+                    </button>
+                  </label>
+                  <input
+                    type="number"
+                    v-model.number="globalSettings.topMargin"
+                    @input="applyGlobalSettings"
+                    placeholder="Auto"
+                    class="w-full p-1 text-xs border bg-white"
+                    min="0"
+                    max="500"
+                  >
+                </div>
+
+                <!-- Bottom Margin -->
+                <div>
+                  <label class="flex text-micro mb-1 justify-between">
+                    <span>Bottom</span>
+                    <button 
+                      v-if="globalSettings.bottomMargin !== null"
+                      @click="globalSettings.bottomMargin = null; applyGlobalSettings()"
+                      class="text-micro text-blue-600 hover:underline"
+                    >
+                      Reset
+                    </button>
+                  </label>
+                  <input
+                    type="number"
+                    v-model.number="globalSettings.bottomMargin"
+                    @input="applyGlobalSettings"
+                    placeholder="Auto"
+                    class="w-full p-1 text-xs border bg-white"
+                    min="0"
+                    max="500"
+                  >
+                </div>
+
+                <!-- Left Margin -->
+                <div>
+                  <label class="flex text-micro mb-1 justify-between">
+                    <span>Left</span>
+                    <button 
+                      v-if="globalSettings.leftMargin !== null"
+                      @click="globalSettings.leftMargin = null; applyGlobalSettings()"
+                      class="text-micro text-blue-600 hover:underline"
+                    >
+                      Reset
+                    </button>
+                  </label>
+                  <input
+                    type="number"
+                    v-model.number="globalSettings.leftMargin"
+                    @input="applyGlobalSettings"
+                    placeholder="Auto"
+                    class="w-full p-1 text-xs border bg-white"
+                    min="0"
+                    max="500"
+                  >
+                </div>
+
+                <!-- Right Margin -->
+                <div>
+                  <label class="flex text-micro mb-1 justify-between">
+                    <span>Right</span>
+                    <button 
+                      v-if="globalSettings.rightMargin !== null"
+                      @click="globalSettings.rightMargin = null; applyGlobalSettings()"
+                      class="text-micro text-blue-600 hover:underline"
+                    >
+                      Reset
+                    </button>
+                  </label>
+                  <input
+                    type="number"
+                    v-model.number="globalSettings.rightMargin"
+                    @input="applyGlobalSettings"
+                    placeholder="Auto"
+                    class="w-full p-1 text-xs border bg-white"
+                    min="0"
+                    max="500"
+                  >
+                </div>
+              </div>
+              <div class="text-micro text-gray-400 mt-2">
+                Individual side margins override the global image margin setting
+              </div>
             </div>
           </div>
 
@@ -151,7 +328,7 @@
               <span>300px (Wide)</span>
             </div>
             <div class="text-micro text-gray-400 mt-1">
-              Distance from edge to EXIF text ({{ Math.round(globalSettings.marginSize / 300 * 100) / 100 }}" at 300 DPI)
+              Legacy control - use Advanced Margin Controls for more precision
             </div>
           </div>
 
@@ -398,7 +575,15 @@ export default {
         showExif: true,
         commercialPrintSafe: true,  // Default to safe mode for commercial printing
         marginSize: 180,  // Custom margin size in pixels (default to commercial safe)
-        textSize: 1.0  // Text size multiplier (0.5 to 2.0)
+        textSize: 1.0,  // Text size multiplier (0.5 to 2.0)
+        // Advanced margin controls
+        textBleedMargin: null,  // Custom text safety margin (null = auto based on commercialPrintSafe)
+        imageBleedMargin: null,  // Custom image margin (null = auto based on commercialPrintSafe)
+        topMargin: null,  // Individual margin overrides (null = use default)
+        bottomMargin: null,
+        leftMargin: null,
+        rightMargin: null,
+        showAdvancedMargins: false  // Toggle for advanced margin controls
       },
       previewPane: {
         isVisible: false,
@@ -487,6 +672,30 @@ export default {
   },
 
   methods: {
+    // Calculate margins with modular, professional control
+    calculateMargins(sizeConfig) {
+      // Text bleed margin (safety margin from edge for EXIF text)
+      const textBleedMargin = this.globalSettings.textBleedMargin !== null 
+        ? this.globalSettings.textBleedMargin 
+        : (this.globalSettings.commercialPrintSafe ? 75 : 30)
+      
+      // Image bleed margin (base margin for image)
+      const baseImageMargin = this.globalSettings.imageBleedMargin !== null
+        ? this.globalSettings.imageBleedMargin
+        : (this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 90))
+      
+      // Individual side margins (allow asymmetric layouts)
+      const margins = {
+        top: this.globalSettings.topMargin !== null ? this.globalSettings.topMargin : baseImageMargin,
+        bottom: this.globalSettings.bottomMargin !== null ? this.globalSettings.bottomMargin : baseImageMargin,
+        left: this.globalSettings.leftMargin !== null ? this.globalSettings.leftMargin : baseImageMargin,
+        right: this.globalSettings.rightMargin !== null ? this.globalSettings.rightMargin : baseImageMargin,
+        textBleed: textBleedMargin
+      }
+      
+      return margins
+    },
+
     async setupTauriDropEvents() {
       try {
         
@@ -685,7 +894,7 @@ export default {
         await this.generateContactSheet(canvas, this.photos, {
           showFilenames: this.globalSettings.showFilenames,
           showExif: this.globalSettings.showExif,
-          margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 40),
+          margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 60),
           spacing: 12,
           fontSize: 10
         })
@@ -729,17 +938,17 @@ export default {
           imgHeight = img.width
         }
         
-        // Text padding is fixed near edge, image margin is adjustable
-        const textPad = 30 // Text always near edge
+        // Use modular margin system for professional control
+        const margins = this.calculateMargins(sizeConfig)
+        const textPad = margins.textBleed
         const fontSize = Math.floor((sizeConfig.width / 100) * this.globalSettings.textSize)
-        const minMargin = textPad + fontSize * 1.5 // Minimum to ensure text is visible
-        const requestedMargin = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 90)
-        const imageMargin = Math.max(minMargin, requestedMargin)
+        
+        // Calculate image area with individual side margins
         const imageArea = {
-          x: imageMargin,
-          y: imageMargin,
-          width: sizeConfig.width - (imageMargin * 2),
-          height: sizeConfig.height - (imageMargin * 2)
+          x: margins.left,
+          y: margins.top,
+          width: sizeConfig.width - margins.left - margins.right,
+          height: sizeConfig.height - margins.top - margins.bottom
         }
         
         const imgAspect = imgWidth / imgHeight
@@ -1122,17 +1331,17 @@ export default {
           imgHeight = img.width
         }
         
-        // Text padding is fixed near edge, image margin is adjustable
-        const textPad = 30 // Text always near edge
+        // Use modular margin system for professional control
+        const margins = this.calculateMargins(sizeConfig)
+        const textPad = margins.textBleed
         const fontSize = Math.floor((sizeConfig.width / 100) * this.globalSettings.textSize)
-        const minMargin = textPad + fontSize * 1.5 // Minimum to ensure text is visible
-        const requestedMargin = this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 90)
-        const imageMargin = Math.max(minMargin, requestedMargin)
+        
+        // Calculate image area with individual side margins
         const imageArea = {
-          x: imageMargin,
-          y: imageMargin,
-          width: sizeConfig.width - (imageMargin * 2),
-          height: sizeConfig.height - (imageMargin * 2)
+          x: margins.left,
+          y: margins.top,
+          width: sizeConfig.width - margins.left - margins.right,
+          height: sizeConfig.height - margins.top - margins.bottom
         }
         
         const imgAspect = imgWidth / imgHeight
@@ -1376,7 +1585,7 @@ export default {
       await this.generateContactSheet(canvas, this.photos, {
         showFilenames: this.globalSettings.showFilenames,
         showExif: this.globalSettings.showExif,
-        margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 40),
+        margin: this.globalSettings.marginSize || (this.globalSettings.commercialPrintSafe ? 180 : 60),
         spacing: 12,
         fontSize: 10
       })
