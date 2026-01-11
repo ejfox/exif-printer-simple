@@ -12,6 +12,10 @@ describe('Margin Safety for Commercial Printing', () => {
   const MIN_CUTTING_TOLERANCE = 0.125 // inches (1/8")
   const MAX_CUTTING_TOLERANCE = 0.25 // inches (1/4")
   
+  // Minimum text area requirement for readability
+  const MIN_TEXT_AREA_PX = 50 // Minimum space needed for legible EXIF text
+  const MIN_TEXT_AREA_NORMAL_PX = 30 // Smaller minimum for careful printing
+  
   const inchesToPixels = (inches: number) => inches * DPI
   const pixelsToInches = (pixels: number) => pixels / DPI
 
@@ -74,9 +78,9 @@ describe('Margin Safety for Commercial Printing', () => {
         const textAreaWidth = imageMargin - textPad
         const textAreaHeight = imageMargin - textPad
         
-        // Text area should be at least 50px (reasonable space for text)
-        expect(textAreaWidth).toBeGreaterThanOrEqual(50)
-        expect(textAreaHeight).toBeGreaterThanOrEqual(50)
+        // Text area should meet minimum requirement for readability
+        expect(textAreaWidth).toBeGreaterThanOrEqual(MIN_TEXT_AREA_PX)
+        expect(textAreaHeight).toBeGreaterThanOrEqual(MIN_TEXT_AREA_PX)
         
         // Verify the calculation
         expect(textAreaWidth).toBe(105) // 180 - 75
@@ -92,8 +96,8 @@ describe('Margin Safety for Commercial Printing', () => {
         const textAreaHeight = imageMargin - textPad
         
         // Should still have reasonable space
-        expect(textAreaWidth).toBeGreaterThanOrEqual(30)
-        expect(textAreaHeight).toBeGreaterThanOrEqual(30)
+        expect(textAreaWidth).toBeGreaterThanOrEqual(MIN_TEXT_AREA_NORMAL_PX)
+        expect(textAreaHeight).toBeGreaterThanOrEqual(MIN_TEXT_AREA_NORMAL_PX)
         
         // Verify the calculation
         expect(textAreaWidth).toBe(60) // 90 - 30
