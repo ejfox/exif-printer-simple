@@ -10,6 +10,42 @@ A minimal desktop application for creating printable photos with EXIF camera dat
 - **Batch Processing** - Download all prints at once to a selected folder
 - **Professional Output** - 300 DPI resolution for high-quality printing
 - **Dark Mode Support** - Clean, minimal interface with native macOS feel
+- **Rank by Taste** - Scores every photo on contrast, tonal range, symmetry and subject
+  placement, then sorts your best work to the front
+- **Collapse Bursts** - Keeps the best frame of each run of near-identical shots
+- **Paginated contact sheets** - Every photo across as many sheets as it takes, with
+  continuous rank numbering
+- **MCP server** - The whole pipeline, card to print, driveable by an agent
+
+## Choosing photos
+
+Two buttons do the selecting.
+
+**Rank by Taste** scores each photo on contrast, tonal range, symmetry, and how centred
+its single subject is, then reorders the tray best first. It is a port of
+[ejtaste](https://github.com/ejfox/ejtaste) v1 with the same weights.
+
+**Collapse Bursts** keeps only the best frame of each run of near-identical shots. Two
+frames count as the same shot only when they are close in time *and* look alike, so
+shooting steadily while walking is not mistaken for a burst.
+
+Frames that are dark *and* have no highlights anywhere are set aside as featureless,
+which is what a camera firing inside a bag looks like. Night photographs keep their
+highlights, so fireworks and lit streets are not thrown away.
+
+## Agent control (MCP)
+
+The app ships an MCP server exposing ten tools: card import, EXIF, ranking, selection,
+Finder tagging, contact sheets and single prints. A whole card, start to finish:
+
+```
+import_card   source=/Volumes/UNTITLED/DCIM  dest=~/Pictures/2026-09-10-card
+select_best   folder=~/Pictures/2026-09-10-card  n=250
+tag_photos    paths=<returned paths>  tag=Yellow
+make_contact_sheets  paths=<returned paths>  out_dir=~/Pictures/contacts
+```
+
+Setup and the full tool list are in [mcp/README.md](mcp/README.md).
 
 ## Quick Start
 
@@ -21,7 +57,7 @@ A minimal desktop application for creating printable photos with EXIF camera dat
 
 ## Technical Details
 
-- Built with **Electron** and **Vue 3**
+- Built with **Tauri** and **Vue 3**
 - Uses **exifr** library for EXIF data extraction
 - **Canvas-based** image processing for precise layout
 - **Code signed** for macOS distribution

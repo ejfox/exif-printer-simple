@@ -392,6 +392,42 @@
             </span>
           </button>
           
+          <button
+            @click="rankPhotosByTaste"
+            :disabled="photos.length === 0 || taste.isRanking || taste.isDeduping"
+            class="w-full p-2 border bg-white text-black text-sm disabled:opacity-50 hover:bg-gray-50"
+            title="Score every photo on contrast, tonal range, symmetry and subject placement, then sort best first"
+          >
+            <span v-if="taste.isRanking">
+              <IconSpinner class="inline-block w-3 h-3 mr-1 align-[-2px] animate-spin" />
+              Ranking...
+            </span>
+            <span v-else>
+              <IconSliders class="inline-block w-3 h-3 mr-1 align-[-2px]" />
+              Rank by Taste
+            </span>
+          </button>
+
+          <button
+            @click="collapseBurstDuplicates"
+            :disabled="photos.length === 0 || taste.isRanking || taste.isDeduping"
+            class="w-full p-2 border bg-white text-black text-sm disabled:opacity-50 hover:bg-gray-50"
+            title="Keep only the best frame of each burst of near-identical shots"
+          >
+            <span v-if="taste.isDeduping">
+              <IconSpinner class="inline-block w-3 h-3 mr-1 align-[-2px] animate-spin" />
+              Collapsing...
+            </span>
+            <span v-else>
+              <IconCheck class="inline-block w-3 h-3 mr-1 align-[-2px]" />
+              Collapse Bursts
+            </span>
+          </button>
+
+          <div v-if="taste.lastCollapsed > 0" class="text-micro text-gray-500 text-center">
+            collapsed {{ taste.lastCollapsed }} near-duplicate{{ taste.lastCollapsed === 1 ? '' : 's' }}
+          </div>
+
           <button 
             @click="clearAllPhotos" 
             :disabled="photos.length === 0"
@@ -570,6 +606,8 @@
 import { usePhotoProcessing } from './composables/usePhotoProcessing'
 import { usePrintSizes } from './composables/usePrintSizes'
 import { useContactSheet } from './composables/useContactSheet'
+import { useTasteRanking } from './composables/useTasteRanking'
+import { useDedupe } from './composables/useDedupe'
 import IconCamera from './components/icons/IconCamera.vue'
 import IconCheck from './components/icons/IconCheck.vue'
 import IconClose from './components/icons/IconClose.vue'
@@ -634,6 +672,12 @@ export default {
       },
       isProcessingFiles: false,
       processingCount: 0,
+      taste: {
+        isRanking: false,
+        isDeduping: false,
+        ranked: false,
+        lastCollapsed: 0
+      },
       tauriUnlisteners: [] // Store cleanup functions
     }
   },
@@ -669,8 +713,10 @@ export default {
   setup() {
     const { createPhotoFromExif, processPhoto, processPhotoFromPath, isImageFile } = usePhotoProcessing()
     const { getSizeConfig, isVideoFormat } = usePrintSizes()
-    const { generateContactSheet, calculateGrid } = useContactSheet()
-    
+    const { generateContactSheet, generateContactSheets, calculateGrid, paginate } = useContactSheet()
+    const { rank: rankByTaste, loadAndMeasure } = useTasteRanking()
+    const { hashUrl, collapseDuplicates } = useDedupe()
+
     return {
       createPhotoFromExif,
       processPhoto,
@@ -679,7 +725,13 @@ export default {
       getSizeConfig,
       isVideoFormat,
       generateContactSheet,
-      calculateGrid
+      generateContactSheets,
+      calculateGrid,
+      paginate,
+      rankByTaste,
+      loadAndMeasure,
+      hashUrl,
+      collapseDuplicates
     }
   },
 
@@ -1638,6 +1690,80 @@ export default {
         }
       } catch (error) {
         console.warn('Failed to load from localStorage:', error)
+      }
+    },
+
+    /**
+     * Score every loaded photo with EJ-taste v1 and reorder the tray best first.
+     * Scores are kept on each photo so contact sheets can print them.
+     */
+    async rankPhotosByTaste() {
+      if (!this.photos.length || this.taste.isRanking) return
+      this.taste.isRanking = true
+      try {
+        const scored = await this.rankByTaste(this.photos)
+        const byId = new Map(scored.map(s => [s.item.id, s]))
+        this.photos = scored.map(s => {
+          const photo = s.item
+          photo.ejtaste = s.ejtaste
+          photo.tasteMetrics = s.metrics
+          return photo
+        })
+        // frames the ranker could not read keep their place at the end
+        for (const photo of this.photos) {
+          if (!byId.has(photo.id)) photo.ejtaste = null
+        }
+        this.taste.ranked = true
+        this.saveToLocalStorage()
+      } catch (error) {
+        console.error('EJ-taste ranking failed:', error)
+      } finally {
+        this.taste.isRanking = false
+      }
+    },
+
+    /**
+     * Collapse burst near-duplicates, keeping the best frame of each run.
+     * Requires scores, so it ranks first when needed.
+     */
+    async collapseBurstDuplicates() {
+      if (!this.photos.length || this.taste.isDeduping) return
+      this.taste.isDeduping = true
+      try {
+        if (!this.taste.ranked) await this.rankPhotosByTaste()
+
+        const candidates = []
+        for (const photo of this.photos) {
+          let hash = null
+          try {
+            hash = await this.hashUrl(photo.imageUrl)
+          } catch {
+            continue
+          }
+          const raw = photo.exif && photo.exif.DateTimeOriginal
+          const takenAt = raw ? new Date(String(raw).replace(/^(\d{4}):(\d{2}):/, '$1-$2-')) : null
+          candidates.push({
+            id: photo.id,
+            hash,
+            takenAt: takenAt && !isNaN(takenAt.valueOf()) ? takenAt : null,
+            score: typeof photo.ejtaste === 'number' ? photo.ejtaste : -Infinity,
+            photo
+          })
+        }
+
+        const keepers = this.collapseDuplicates(candidates)
+        const before = this.photos.length
+        this.photos = keepers.map(k => {
+          k.keeper.photo.burstSize = k.burstSize
+          return k.keeper.photo
+        })
+        this.taste.lastCollapsed = before - this.photos.length
+        this.previewPane.selectedPhotoIndex = null
+        this.saveToLocalStorage()
+      } catch (error) {
+        console.error('Burst collapse failed:', error)
+      } finally {
+        this.taste.isDeduping = false
       }
     },
 
